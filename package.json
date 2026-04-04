@@ -1,0 +1,13 @@
+{
+  "name": "boardlink",
+  "version": "1.0.0",
+  "description": "Accessible Screen Sharing for Low-Vision Students",
+  "scripts": {
+    "dev": "concurrently \"npm run dev-server\" \"npm run dev-client\"",
+    "dev-server": "cd server && npm start",
+    "dev-client": "cd client && npx vite"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
