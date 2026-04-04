@@ -55,7 +55,7 @@ function showView(viewName) {
 // Initial Landing Logic
 btns.shareStart.onclick = async () => {
   await initSignaling();
-  signaling.send('CREATE_ROOM');
+  signaling.createRoom();
 };
 
 btns.joinStart.onclick = () => {
@@ -70,7 +70,7 @@ btns.joinConfirm.onclick = async () => {
   if (code.length !== 4) return;
   
   await initSignaling();
-  signaling.send('JOIN_ROOM', code);
+  signaling.joinRoom(code);
 };
 
 btns.endSession.onclick = () => {
@@ -84,7 +84,7 @@ async function initSignaling() {
   
   signaling.onMessage = async (msg) => {
     try {
-      const { type, roomCode, payload, message } = msg;
+      const { type, roomCode, payload, message, peerId } = msg;
 
       switch (type) {
         case 'ROOM_CREATED':
@@ -97,23 +97,30 @@ async function initSignaling() {
         case 'JOIN_SUCCESS':
           currentRoomCode = roomCode;
           showView('studentLive');
+          if (rtc) rtc.setLocalPeerId(peerId);
           await startStudentSession(roomCode);
           break;
 
         case 'STUDENT_JOINED':
           status.studentCount.innerText = `${payload || msg.studentCount} Students Connected`;
+          if (rtc) await rtc.onStudentJoined(peerId);
+          break;
+
+        case 'STUDENT_LEFT':
+          status.studentCount.innerText = `${payload || msg.studentCount} Students Connected`;
+          if (rtc) await rtc.onStudentLeft(peerId);
           break;
 
         case 'OFFER':
-          if (rtc) await rtc.handleOffer(payload);
+          if (rtc) await rtc.onSignalingOffer(payload);
           break;
 
         case 'ANSWER':
-          if (rtc) await rtc.handleAnswer(payload);
+          if (rtc) await rtc.onSignalingAnswer(payload, peerId);
           break;
 
         case 'ICE_CANDIDATE':
-          if (rtc) await rtc.handleIceCandidate(payload);
+          if (rtc) await rtc.onSignalingIceCandidate(payload, peerId);
           break;
 
         case 'ERROR':

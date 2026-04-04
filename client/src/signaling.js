@@ -78,6 +78,27 @@ export default class SignalingClient {
     }
   }
 
+  createRoom() {
+    this.send('CREATE_ROOM');
+  }
+
+  joinRoom(roomCode) {
+    this.send('JOIN_ROOM', roomCode);
+  }
+
+  sendOffer(roomCode, targetPeerId, offer) {
+    this.send('OFFER', roomCode, { targetPeerId, offer });
+  }
+
+  sendAnswer(roomCode, answer) {
+    this.send('ANSWER', roomCode, answer);
+  }
+
+  sendIceCandidate(roomCode, candidate, targetPeerId = null) {
+    const payload = targetPeerId ? { targetPeerId, candidate } : candidate;
+    this.send('ICE_CANDIDATE', roomCode, payload);
+  }
+
   close() {
     this.isManualClose = true;
     if (this.ws) this.ws.close();
