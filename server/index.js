@@ -47,92 +47,100 @@ wss.on('connection', (ws) => {
       console.log(`Received: ${type} for room: ${roomCode}`);
 
       switch (type) {
-      case 'CREATE_ROOM':
-        const newCode = generateRoomCode();
-        rooms.set(newCode, { teacher: ws, students: new Map() });
-        currentRoom = newCode;
-        isTeacher = true;
-        ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode: newCode }));
-        console.log(`Room created: ${newCode}`);
-        break;
-
-      case 'JOIN_ROOM':
-        if (rooms.has(roomCode)) {
-          const room = rooms.get(roomCode);
-          peerId = generatePeerId();
-          room.students.set(peerId, ws);
-          currentRoom = roomCode;
-          isTeacher = false;
-          ws.send(JSON.stringify({ type: 'JOIN_SUCCESS', roomCode, peerId }));
-          
-          room.teacher.send(JSON.stringify({
-            type: 'STUDENT_JOINED',
-            studentCount: room.students.size,
-            peerId
-          }));
-          console.log(`Student joined room: ${roomCode}`);
-        } else {
-          ws.send(JSON.stringify({ type: 'ERROR', message: 'This code has expired — ask your teacher for a new one' }));
-        }
-        break;
-
-      case 'OFFER':
-        if (!isTeacher) break;
-        if (!currentRoom || !rooms.has(currentRoom)) break;
-        const offerRoom = rooms.get(currentRoom);
-        if (!payload?.targetPeerId) {
-          ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing target peer id for OFFER' }));
+        case 'CREATE_ROOM':
+          const newCode = generateRoomCode();
+          rooms.set(newCode, { teacher: ws, students: new Map() });
+          currentRoom = newCode;
+          isTeacher = true;
+          ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode: newCode }));
+          console.log(`Room created: ${newCode}`);
           break;
-        }
-        const offerTarget = offerRoom.students.get(payload.targetPeerId);
-        if (offerTarget && offerTarget.readyState === WebSocket.OPEN) {
-          offerTarget.send(JSON.stringify({
-            type: 'OFFER',
-            payload: payload.offer,
-            peerId: payload.targetPeerId
-          }));
-        }
-        break;
 
-      case 'ANSWER':
-        if (isTeacher) break;
-        if (currentRoom && rooms.has(currentRoom)) {
-          const answerRoom = rooms.get(currentRoom);
-          if (answerRoom.teacher.readyState === WebSocket.OPEN) {
-            answerRoom.teacher.send(JSON.stringify({
-              type: 'ANSWER',
+        case 'JOIN_ROOM':
+          if (rooms.has(roomCode)) {
+            const room = rooms.get(roomCode);
+            let peerIdAttempts = 0;
+            do {
+              peerId = generatePeerId();
+              peerIdAttempts++;
+            } while (room.students.has(peerId) && peerIdAttempts < 10);
+            if (room.students.has(peerId)) {
+              ws.send(JSON.stringify({ type: 'ERROR', message: 'Unable to allocate peer session. Please try again.' }));
+              break;
+            }
+            room.students.set(peerId, ws);
+            currentRoom = roomCode;
+            isTeacher = false;
+            ws.send(JSON.stringify({ type: 'JOIN_SUCCESS', roomCode, peerId }));
+            
+            room.teacher.send(JSON.stringify({
+              type: 'STUDENT_JOINED',
+              studentCount: room.students.size,
+              peerId
+            }));
+            console.log(`Student joined room: ${roomCode}`);
+          } else {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'This code has expired — ask your teacher for a new one' }));
+          }
+          break;
+
+        case 'OFFER':
+          if (!isTeacher) break;
+          if (!currentRoom || !rooms.has(currentRoom)) break;
+          const offerRoom = rooms.get(currentRoom);
+          if (!payload?.targetPeerId) {
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing target peer id for OFFER' }));
+            break;
+          }
+          const offerTarget = offerRoom.students.get(payload.targetPeerId);
+          if (offerTarget && offerTarget.readyState === WebSocket.OPEN) {
+            offerTarget.send(JSON.stringify({
+              type: 'OFFER',
+              payload: payload.offer,
+              peerId: payload.targetPeerId
+            }));
+          }
+          break;
+
+        case 'ANSWER':
+          if (isTeacher) break;
+          if (currentRoom && rooms.has(currentRoom)) {
+            const answerRoom = rooms.get(currentRoom);
+            if (answerRoom.teacher.readyState === WebSocket.OPEN) {
+              answerRoom.teacher.send(JSON.stringify({
+                type: 'ANSWER',
+                payload,
+                peerId
+              }));
+            }
+          }
+          break;
+
+        case 'ICE_CANDIDATE':
+          if (!currentRoom || !rooms.has(currentRoom)) break;
+          const iceRoom = rooms.get(currentRoom);
+          if (isTeacher) {
+            if (!payload?.targetPeerId) break;
+            const iceTarget = iceRoom.students.get(payload.targetPeerId);
+            if (iceTarget && iceTarget.readyState === WebSocket.OPEN) {
+              iceTarget.send(JSON.stringify({
+                type: 'ICE_CANDIDATE',
+                payload: payload.candidate,
+                peerId: payload.targetPeerId
+              }));
+            }
+          } else if (iceRoom.teacher.readyState === WebSocket.OPEN) {
+            iceRoom.teacher.send(JSON.stringify({
+              type: 'ICE_CANDIDATE',
               payload,
               peerId
             }));
           }
-        }
-        break;
+          break;
 
-      case 'ICE_CANDIDATE':
-        if (!currentRoom || !rooms.has(currentRoom)) break;
-        const iceRoom = rooms.get(currentRoom);
-        if (isTeacher) {
-          if (!payload?.targetPeerId) break;
-          const iceTarget = iceRoom.students.get(payload.targetPeerId);
-          if (iceTarget && iceTarget.readyState === WebSocket.OPEN) {
-            iceTarget.send(JSON.stringify({
-              type: 'ICE_CANDIDATE',
-              payload: payload.candidate,
-              peerId: payload.targetPeerId
-            }));
-          }
-        } else if (iceRoom.teacher.readyState === WebSocket.OPEN) {
-          iceRoom.teacher.send(JSON.stringify({
-            type: 'ICE_CANDIDATE',
-            payload,
-            peerId
-          }));
-        }
-        break;
-
-      default:
-        console.log(`Unknown message type: ${type}`);
-    }
+        default:
+          console.log(`Unknown message type: ${type}`);
+      }
     } catch (err) {
       console.error('Failed to process message:', err);
     }
@@ -150,18 +158,17 @@ wss.on('connection', (ws) => {
         console.log(`Room deleted (teacher left): ${currentRoom}`);
       } else {
         // If student leaves, just remove from set
-        if (peerId) {
-          room.students.delete(peerId);
-        } else {
+        if (!peerId) {
           for (const [id, studentWs] of room.students.entries()) {
             if (studentWs === ws) {
-              room.students.delete(id);
               peerId = id;
               break;
             }
           }
         }
-        if (room.teacher.readyState === ws.OPEN) {
+        if (!peerId) return;
+        room.students.delete(peerId);
+        if (room.teacher.readyState === WebSocket.OPEN) {
           room.teacher.send(JSON.stringify({
             type: 'STUDENT_LEFT',
             studentCount: room.students.size,

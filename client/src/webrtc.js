@@ -59,7 +59,10 @@ export default class WebRTCClient {
   }
 
   async createTeacherPeerConnection(targetPeerId) {
-    if (!this.stream) return;
+    if (!this.stream) {
+      console.error(`Cannot create peer connection for ${targetPeerId}: screen sharing has not been initialized.`);
+      return;
+    }
     if (this.peerConnections.has(targetPeerId)) return;
 
     const pc = new RTCPeerConnection(this.config);
@@ -140,12 +143,25 @@ export default class WebRTCClient {
   }
 
   getConnectedCount() {
-    return this.isTeacher ? this.peerConnections.size : (this.pc ? 1 : 0);
+    if (this.isTeacher) {
+      let activeCount = 0;
+      this.peerConnections.forEach((pc) => {
+        const isActive = pc.connectionState === 'connected' || pc.connectionState === 'connecting';
+        if (isActive) activeCount++;
+      });
+      return activeCount;
+    }
+    if (!this.pc) return 0;
+    return (this.pc.connectionState === 'connected' || this.pc.connectionState === 'connecting') ? 1 : 0;
   }
 
   async onStudentJoined(peerId) {
     if (!this.isTeacher || !peerId) return;
-    await this.createTeacherPeerConnection(peerId);
+    try {
+      await this.createTeacherPeerConnection(peerId);
+    } catch (err) {
+      console.error(`Failed to create peer connection for ${peerId}:`, err);
+    }
   }
 
   async onStudentLeft(peerId) {
@@ -171,13 +187,17 @@ export default class WebRTCClient {
     this.dataChannels.clear();
   }
 
-  async replaceTracksForTeacher() {
+  async replaceVideoTracksForTeacher() {
     if (!this.isTeacher || !this.stream) return;
     this.peerConnections.forEach((pc) => {
       pc.getSenders().forEach((sender) => {
         if (sender.track && sender.track.kind === 'video') {
           const nextTrack = this.stream.getVideoTracks()[0];
-          if (nextTrack) sender.replaceTrack(nextTrack).catch(() => {});
+          if (nextTrack) {
+            sender.replaceTrack(nextTrack).catch((err) => {
+              console.error('Failed to replace teacher video track:', err);
+            });
+          }
         }
       });
     });
