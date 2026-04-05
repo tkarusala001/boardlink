@@ -1,3 +1,5 @@
+const PROTOCOL_VERSION = 1;
+
 export default class SignalingClient {
   constructor(url) {
     this.url = url;
@@ -6,6 +8,7 @@ export default class SignalingClient {
     this.onOpen = null;
     this.onClose = null;
     this.onReconnecting = null;
+    this.onObsoleteClient = null; // Called when server rejects client as outdated
     
     this.reconnectAttempts = 0;
     this.maxReconnectDelay = 30000;
@@ -36,6 +39,13 @@ export default class SignalingClient {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data.toString());
+          // Handle server-side version rejection
+          if (message.type === 'SYS_OBSOLETE_CLIENT') {
+            console.error('[Signaling] Server rejected client as outdated:', message.message);
+            if (this.onObsoleteClient) this.onObsoleteClient(message.message);
+            this.isManualClose = true; // Don't auto-reconnect on version mismatch
+            return;
+          }
           if (this.onMessage) this.onMessage(message);
         } catch (err) {
           console.error('Failed to parse signaling message:', err);
@@ -68,8 +78,8 @@ export default class SignalingClient {
     setTimeout(() => this.connect().catch(() => {}), delay);
   }
 
-  send(type, roomCode, payload = {}) {
-    const msg = JSON.stringify({ type, roomCode, payload });
+  send(type, roomCode, payload = {}, targetId = null) {
+    const msg = JSON.stringify({ v: PROTOCOL_VERSION, type, roomCode, payload, targetId });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(msg);
     } else {

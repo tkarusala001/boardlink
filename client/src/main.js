@@ -101,19 +101,22 @@ async function initSignaling() {
           break;
 
         case 'STUDENT_JOINED':
-          status.studentCount.innerText = `${payload || msg.studentCount} Students Connected`;
+          status.studentCount.innerText = `${msg.studentCount} Students Connected`;
+          if (msg.studentId && rtc) {
+            await rtc.createStudentConnection(msg.studentId);
+          }
           break;
 
         case 'OFFER':
-          if (rtc) await rtc.handleOffer(payload);
+          if (rtc) await rtc.handleOffer(payload, msg.studentId);
           break;
 
         case 'ANSWER':
-          if (rtc) await rtc.handleAnswer(payload);
+          if (rtc) await rtc.handleAnswer(payload, msg.studentId);
           break;
 
         case 'ICE_CANDIDATE':
-          if (rtc) await rtc.handleIceCandidate(payload);
+          if (rtc) await rtc.handleIceCandidate(payload, msg.studentId);
           break;
 
         case 'ERROR':
@@ -124,6 +127,13 @@ async function initSignaling() {
     } catch (err) {
       console.error('Failed to process signaling message:', err);
     }
+  };
+
+  signaling.onObsoleteClient = (msg) => {
+    status.joinError.innerText = `⚠️ ${msg}`;
+    status.joinError.style.display = 'block';
+    status.joinError.style.backgroundColor = 'var(--accent-danger, #e74c3c)';
+    status.joinError.style.color = 'white';
   };
 
   signaling.onReconnecting = (attempt) => {
@@ -220,17 +230,11 @@ async function startStudentSession(code) {
         
         // 2. Bold-Ink Processing (REQ-017 / REQ-018)
         if (currentFilter !== 'none') {
-          // Get ImageData from current frame
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = canvas.width;
-          tempCanvas.height = canvas.height;
-          const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.drawImage(video, 0, 0);
-          const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
-
-          processingWorker.postMessage({
-            type: 'PROCESS_FRAME',
-            payload: { imageData, filterLevel: currentFilter, palette: currentPalette }
+          createImageBitmap(video).then(bitmap => {
+            processingWorker.postMessage({
+              type: 'PROCESS_FRAME_BITMAP',
+              payload: { bitmap, filterLevel: currentFilter, palette: currentPalette }
+            }, [bitmap]);
           });
         }
         

@@ -1,13 +1,18 @@
 export default class WebRTCClient {
   constructor(signaling, isTeacher = false) {
     this.signaling = signaling;
-    this.pc = null;
-    this.stream = null;
-    this.onStream = null;
     this.isTeacher = isTeacher;
+    this.roomCode = null;
+    
+    // Teacher state
+    this.peers = new Map(); // studentId -> { pc, dataChannel }
+    this.stream = null;
+    
+    // Student state
+    this.pc = null;
+    this.onStream = null;
     this.dataChannel = null;
     this.onData = null;
-    this.roomCode = null;
 
     this.config = {
       iceServers: [
@@ -19,13 +24,6 @@ export default class WebRTCClient {
 
   async start(roomCode) {
     this.roomCode = roomCode;
-    this.pc = new RTCPeerConnection(this.config);
-
-    this.pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        this.signaling.sendIceCandidate(this.roomCode, event.candidate);
-      }
-    };
 
     if (this.isTeacher) {
       // Capture screen
@@ -38,21 +36,26 @@ export default class WebRTCClient {
         },
         audio: false
       });
-
-      this.stream.getTracks().forEach(track => this.pc.addTrack(track, this.stream));
-
-      // Setup DataChannel for cursor (REQ-010: 60Hz)
-      this.dataChannel = this.pc.createDataChannel('cursorUpdates', { ordered: false });
-      this.dataChannel.onopen = () => console.log('Data channel opened');
-      
-      const offer = await this.pc.createOffer();
-      await this.pc.setLocalDescription(offer);
-      this.signaling.sendOffer(this.roomCode, offer);
-
+      // Teacher waits for students to join before creating connections in createStudentConnection()
     } else {
       // Student side
+      this.pc = new RTCPeerConnection(this.config);
+
+      this.pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          this.signaling.send('ICE_CANDIDATE', this.roomCode, event.candidate, null);
+        }
+      };
+
       this.pc.ontrack = (event) => {
         if (this.onStream) this.onStream(event.streams[0]);
+      };
+
+      this.pc.onconnectionstatechange = () => {
+        console.log(`[WebRTC] Student connection state: ${this.pc.connectionState}`);
+        if (this.pc.connectionState === 'failed') {
+          console.warn('[WebRTC] ICE failed on student side — signaling loss or NAT issue.');
+        }
       };
 
       this.pc.ondatachannel = (event) => {
@@ -64,27 +67,72 @@ export default class WebRTCClient {
     }
   }
 
+  async createStudentConnection(studentId) {
+    if (!this.isTeacher || !this.stream) return;
+    
+    const pc = new RTCPeerConnection(this.config);
+    this.stream.getTracks().forEach(track => pc.addTrack(track, this.stream));
+    
+    // REQ-007 & blueprint perf plan: unreliable DataChannel for cursor updates (low-latency, fire-and-forget)
+    const dataChannel = pc.createDataChannel('cursorUpdates', { ordered: false, maxRetransmits: 0 });
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.signaling.send('ICE_CANDIDATE', this.roomCode, event.candidate, studentId);
+      }
+    };
+
+    // Monitor connection health for future ICE restart hooks
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Teacher -> Student ${studentId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed') {
+        console.warn(`[WebRTC] Connection failed for student ${studentId}. Attempting ICE restart...`);
+        pc.restartIce();
+      }
+    };
+    
+    this.peers.set(studentId, { pc, dataChannel });
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    this.signaling.send('OFFER', this.roomCode, offer, studentId);
+  }
+
   async handleOffer(offer) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    this.signaling.sendIceCandidate(this.roomCode, null); // Anchor
-    this.signaling.sendAnswer(this.roomCode, answer);
+    if (this.pc) {
+      await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await this.pc.createAnswer();
+      await this.pc.setLocalDescription(answer);
+      this.signaling.send('ANSWER', this.roomCode, answer);
+    }
   }
 
-  async handleAnswer(answer) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
+  async handleAnswer(answer, studentId) {
+    if (this.isTeacher && this.peers.has(studentId)) {
+      await this.peers.get(studentId).pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
   }
 
-  async handleIceCandidate(candidate) {
+  async handleIceCandidate(candidate, studentId) {
     if (candidate) {
-      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+      if (this.isTeacher && studentId && this.peers.has(studentId)) {
+        await this.peers.get(studentId).pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } else if (!this.isTeacher && this.pc) {
+        await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
     }
   }
 
   sendCursor(x, y) {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify({ type: 'CURSOR', x, y }));
+    const msg = JSON.stringify({ type: 'CURSOR', x, y });
+    if (this.isTeacher) {
+      for (const [id, peer] of this.peers) {
+        if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+          peer.dataChannel.send(msg);
+        }
+      }
+    } else if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.dataChannel.send(msg);
     }
   }
 
@@ -92,7 +140,12 @@ export default class WebRTCClient {
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
     }
-    if (this.pc) {
+    if (this.isTeacher) {
+      for (const [id, peer] of this.peers) {
+        if (peer.pc) peer.pc.close();
+      }
+      this.peers.clear();
+    } else if (this.pc) {
       this.pc.close();
     }
   }

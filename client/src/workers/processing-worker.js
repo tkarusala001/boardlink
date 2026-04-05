@@ -8,8 +8,35 @@ self.onmessage = (e) => {
     case 'PROCESS_FRAME':
       processFrame(payload);
       break;
+    case 'PROCESS_FRAME_BITMAP':
+      processFrameBitmap(payload);
+      break;
   }
 };
+
+let offscreenCanvas = null;
+let offscreenCtx = null;
+
+function processFrameBitmap({ bitmap, filterLevel, palette }) {
+  if (!offscreenCanvas) {
+    offscreenCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+  } else if (offscreenCanvas.width !== bitmap.width || offscreenCanvas.height !== bitmap.height) {
+    offscreenCanvas.width = bitmap.width;
+    offscreenCanvas.height = bitmap.height;
+  }
+
+  offscreenCtx.drawImage(bitmap, 0, 0);
+  const imageData = offscreenCtx.getImageData(0, 0, bitmap.width, bitmap.height);
+  bitmap.close();
+
+  if (filterLevel !== 'none') {
+    const processedData = applyBoldInk(imageData, filterLevel);
+    self.postMessage({ type: 'FRAME_PROCESSED', payload: { imageData: processedData } });
+  } else {
+    self.postMessage({ type: 'FRAME_PROCESSED', payload: { imageData } });
+  }
+}
 
 function processFrame({ imageData, filterLevel, palette }) {
   if (filterLevel !== 'none') {
