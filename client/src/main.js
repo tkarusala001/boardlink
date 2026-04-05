@@ -41,8 +41,8 @@ let currentFilter = 'none';
 let processingWorker = null;
 let focusWorker = null;
 let focusPane = null;
+let processingInFlight = false;
 
-// WCAG: ARIA live-region announcer
 const srAnnouncer = document.getElementById('sr-announcer');
 function announce(msg) {
   // Briefly clear then set to force re-announcement on identical strings
@@ -55,12 +55,8 @@ const FILTER_CYCLE = ['none', 'light', 'medium', 'heavy'];
 
 function showView(viewName) {
   Object.values(views).forEach(v => v.style.display = 'none');
-  views[viewName].style.display = viewName === 'studentLive' ? 'block' : 'block'; // Adjust for flex/grid if needed
-  if (viewName === 'studentLive') {
-    views[viewName].parentElement.style.display = 'flex';
-  } else {
-    views[viewName].parentElement.style.display = 'flex';
-  }
+  views[viewName].style.display = 'block';
+  views[viewName].parentElement.style.display = 'flex';
 }
 
 // Initial Landing Logic
@@ -209,7 +205,6 @@ async function startTeacherSession(code) {
     await rtc.start(code);
     announce('Screen sharing started. Waiting for students.');
 
-    // Track cursor position (REQ-010)
     window.addEventListener('mousemove', (e) => {
       const x = e.clientX / window.innerWidth;
       const y = e.clientY / window.innerHeight;
@@ -244,9 +239,9 @@ async function startStudentSession(code) {
     }
   };
 
-  // Removed transferControlToOffscreen to fix "Black Screen" (UI thread must own ctx)
   processingWorker.onmessage = (e) => {
     if (e.data.type === 'FRAME_PROCESSED' && currentFilter !== 'none') {
+       processingInFlight = false;
        ctx.putImageData(e.data.payload.imageData, 0, 0);
     }
   };
@@ -273,11 +268,10 @@ async function startStudentSession(code) {
           );
         }
 
-        // 1. Base Draw (REQ-020: Lowest Latency)
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // 2. Bold-Ink Processing (REQ-017 / REQ-018)
-        if (currentFilter !== 'none') {
+        if (currentFilter !== 'none' && !processingInFlight) {
+          processingInFlight = true;
           createImageBitmap(video).then(bitmap => {
             processingWorker.postMessage({
               type: 'PROCESS_FRAME_BITMAP',
@@ -286,7 +280,7 @@ async function startStudentSession(code) {
           });
         }
         
-        // 3. Focus AI (REQ-001)
+        // Send every other frame to focus worker
         if (Math.random() > 0.5) {
           const thumbCanvas = document.createElement('canvas');
           thumbCanvas.width = video.videoWidth / 10;
@@ -336,21 +330,28 @@ async function startStudentSession(code) {
     pane.style.display = pane.style.display === 'none' ? 'block' : 'none';
   };
 
-  document.getElementById('focus-thumbnail').onclick = (e) => {
+  const focusThumbnail = document.getElementById('focus-thumbnail');
+  focusThumbnail.onclick = (e) => {
     if (!focusPane) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const nx = (e.clientX - rect.left) / rect.width;
     const ny = (e.clientY - rect.top) / rect.height;
-    
-    focusPane.toggleAuto(false); // Manual override
+
+    focusPane.toggleAuto(false);
     focusPane.targetX = nx;
     focusPane.targetY = ny;
-    
-    // Add a way to resume auto? Maybe double click or a 'Resume' button
   };
-  // ── Keyboard Shortcuts ─────────────────────────────────────────────────────
-  // Space  → Freeze frame (PIP)
-  // Shift+F → Cycle Bold-Ink filter
+
+  focusThumbnail.addEventListener('keydown', (e) => {
+    if (!focusPane) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      // Toggle back to auto focus on Enter/Space
+      focusPane.toggleAuto(true);
+      announce('Focus mode set to automatic.');
+    }
+  });
+  // Keyboard shortcuts: Space = freeze, Shift+F = cycle filter
   window.addEventListener('keydown', (e) => {
     // Ignore if typing in an input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;

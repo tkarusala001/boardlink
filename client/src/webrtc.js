@@ -27,7 +27,6 @@ export default class WebRTCClient {
 
     if (this.isTeacher) {
       // Capture screen
-      // REQ-007: 10fps target, 1080p
       this.stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: 1920 },
@@ -73,7 +72,7 @@ export default class WebRTCClient {
     const pc = new RTCPeerConnection(this.config);
     this.stream.getTracks().forEach(track => pc.addTrack(track, this.stream));
     
-    // REQ-007 & blueprint perf plan: unreliable DataChannel for cursor updates (low-latency, fire-and-forget)
+    // Unreliable channel for low-latency cursor updates
     const dataChannel = pc.createDataChannel('cursorUpdates', { ordered: false, maxRetransmits: 0 });
     
     pc.onicecandidate = (event) => {
@@ -82,7 +81,6 @@ export default class WebRTCClient {
       }
     };
 
-    // Monitor connection health for future ICE restart hooks
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC] Teacher -> Student ${studentId}: ${pc.connectionState}`);
       if (pc.connectionState === 'failed') {
@@ -99,27 +97,36 @@ export default class WebRTCClient {
   }
 
   async handleOffer(offer) {
-    if (this.pc) {
-      await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+    if (!this.pc) return;
+    try {
+      await this.pc.setRemoteDescription(offer);
       const answer = await this.pc.createAnswer();
       await this.pc.setLocalDescription(answer);
       this.signaling.send('ANSWER', this.roomCode, answer);
+    } catch (err) {
+      console.error('[WebRTC] Failed to handle offer:', err);
     }
   }
 
   async handleAnswer(answer, studentId) {
-    if (this.isTeacher && this.peers.has(studentId)) {
-      await this.peers.get(studentId).pc.setRemoteDescription(new RTCSessionDescription(answer));
+    if (!this.isTeacher || !this.peers.has(studentId)) return;
+    try {
+      await this.peers.get(studentId).pc.setRemoteDescription(answer);
+    } catch (err) {
+      console.error(`[WebRTC] Failed to handle answer for ${studentId}:`, err);
     }
   }
 
   async handleIceCandidate(candidate, studentId) {
-    if (candidate) {
+    if (!candidate) return;
+    try {
       if (this.isTeacher && studentId && this.peers.has(studentId)) {
-        await this.peers.get(studentId).pc.addIceCandidate(new RTCIceCandidate(candidate));
+        await this.peers.get(studentId).pc.addIceCandidate(candidate);
       } else if (!this.isTeacher && this.pc) {
-        await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+        await this.pc.addIceCandidate(candidate);
       }
+    } catch (err) {
+      console.error('[WebRTC] Failed to add ICE candidate:', err);
     }
   }
 

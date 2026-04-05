@@ -1,16 +1,12 @@
-// BoardLink Processing Worker
-// Handles Bold-Ink (Sobel + Dilation) and Color Transformations
+// Processing Worker — Bold-Ink dilation + color transforms
 
 self.onmessage = (e) => {
   const { type, payload } = e.data;
 
-  switch (type) {
-    case 'PROCESS_FRAME':
-      processFrame(payload);
-      break;
-    case 'PROCESS_FRAME_BITMAP':
-      processFrameBitmap(payload);
-      break;
+  if (type === 'PROCESS_FRAME') {
+    processFrame(payload);
+  } else if (type === 'PROCESS_FRAME_BITMAP') {
+    processFrameBitmap(payload);
   }
 };
 
@@ -52,13 +48,12 @@ function applyBoldInk(imageData, level) {
   const radius = level === 'light' ? 1 : (level === 'medium' ? 2 : 3);
   const output = new Uint8ClampedArray(data);
 
-  // Simple Box Dilation for performance (REQ-020)
-  // We only dilate dark pixels on light backgrounds (REQ-021)
+  // Dilate dark pixels to make strokes bolder
   for (let y = radius; y < height - radius; y++) {
     for (let x = radius; x < width - radius; x++) {
       const idx = (y * width + x) * 4;
       
-      // REQ-021: Only process if stroke is dark (luminance < 80)
+      // Only process dark strokes (lum < 80)
       const r = data[idx], g = data[idx+1], b = data[idx+2];
       const lum = (0.299 * r + 0.587 * g + 0.114 * b);
 

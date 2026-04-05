@@ -5,7 +5,7 @@ export default class FocusPane {
     this.canvasThumb = canvasThumb;
     this.thumbHighlight = thumbHighlight;
 
-    // Spring State (REQ-001/Section 9.2)
+    // Spring animation state
     this.x = 0.5; this.y = 0.5;
     this.vX = 0; this.vY = 0;
     this.targetX = 0.5; this.targetY = 0.5;

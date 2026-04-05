@@ -16,8 +16,6 @@ export default class SignalingClient {
     this.messageQueue = [];
   }
 
-  // ── Semantic helpers (preferred over raw send()) ──────────────────────────
-
   createRoom() {
     this.send('CREATE_ROOM');
   }

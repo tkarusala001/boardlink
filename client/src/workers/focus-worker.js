@@ -1,14 +1,12 @@
-// BoardLink Focus Worker
-// REQ-001: Signal Fusion Logic
+// Focus Worker — fuses cursor + temporal signals to find the active region
 
 let width = 0;
 let height = 0;
 let previousFrame = null;
-let cursorHeatmap = null;
-let temporalDifferenceMap = null;
-let finalAttentionMap = null;
+let cursorMap = null;
+let diffMap = null;
+let attnMap = null;
 
-// Settings (from REQ-001/Section 9.2)
 const weights = {
   cursor: 0.45,
   temporal: 0.35,
@@ -27,9 +25,9 @@ self.onmessage = (e) => {
       
       // Initialize heatmaps at 1/10th scale for performance
       const mapSize = (width / 10) * (height / 10);
-      cursorHeatmap = new Float32Array(mapSize);
-      temporalDifferenceMap = new Float32Array(mapSize);
-      finalAttentionMap = new Float32Array(mapSize);
+      cursorMap = new Float32Array(mapSize);
+      diffMap = new Float32Array(mapSize);
+      attnMap = new Float32Array(mapSize);
       break;
 
     case 'PROCESS_CURSOR':
@@ -48,15 +46,15 @@ self.onmessage = (e) => {
 };
 
 function updateCursorHeatmap(nx, ny) {
-  if (!cursorHeatmap) return;
+  if (!cursorMap) return;
   const mapW = width / 10;
   const mapH = height / 10;
   const mx = Math.floor(nx * mapW);
   const my = Math.floor(ny * mapH);
   
   // Decaying existing heatmap
-  for (let i = 0; i < cursorHeatmap.length; i++) {
-    cursorHeatmap[i] *= decayPerFrame;
+  for (let i = 0; i < cursorMap.length; i++) {
+    cursorMap[i] *= decayPerFrame;
   }
   
   // Add a Gaussian pulse at cursor location
@@ -68,14 +66,14 @@ function updateCursorHeatmap(nx, ny) {
       if (rx >= 0 && rx < mapW && ry >= 0 && ry < mapH) {
         const dist = Math.sqrt(dx*dx + dy*dy);
         const weight = Math.max(0, 1 - dist / radius);
-        cursorHeatmap[ry * mapW + rx] += weight * 0.5;
+        cursorMap[ry * mapW + rx] += weight * 0.5;
       }
     }
   }
 }
 
 function updateTemporalMap(imageData) {
-  if (!previousFrame) {
+  if (!previousFrame || previousFrame.length !== imageData.data.length) {
     previousFrame = new Uint8Array(imageData.data);
     return;
   }
@@ -92,7 +90,7 @@ function updateTemporalMap(imageData) {
       const pr = previousFrame[originalIdx], pg = previousFrame[originalIdx+1], pb = previousFrame[originalIdx+2];
       
       const diff = (Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb)) / 3;
-      temporalDifferenceMap[y * mapW + x] = diff > 15 ? (diff / 255) : 0;
+      diffMap[y * mapW + x] = diff > 15 ? (diff / 255) : 0;
     }
   }
 
@@ -100,8 +98,8 @@ function updateTemporalMap(imageData) {
 }
 
 function fuseSignals() {
-  for (let i = 0; i < finalAttentionMap.length; i++) {
-    finalAttentionMap[i] = (cursorHeatmap[i] * weights.cursor) + (temporalDifferenceMap[i] * weights.temporal);
+  for (let i = 0; i < attnMap.length; i++) {
+    attnMap[i] = (cursorMap[i] * weights.cursor) + (diffMap[i] * weights.temporal);
     // (Stroke density omitted for initial pass)
   }
 }
@@ -112,9 +110,9 @@ function extractBestRegion() {
   let maxScore = -1;
   let bestX = 0, bestY = 0;
 
-  for (let i = 0; i < finalAttentionMap.length; i++) {
-    if (finalAttentionMap[i] > maxScore) {
-      maxScore = finalAttentionMap[i];
+  for (let i = 0; i < attnMap.length; i++) {
+    if (attnMap[i] > maxScore) {
+      maxScore = attnMap[i];
       bestX = i % mapW;
       bestY = Math.floor(i / mapW);
     }
@@ -125,7 +123,7 @@ function extractBestRegion() {
     cx: bestX / mapW,
     cy: bestY / mapH,
     confidence: maxScore,
-    // Suggested Bounding Box (REQ-001/Section 9.2: 2x expansion factor)
+    // Suggested bounding box (2x expansion)
     width: 0.5, 
     height: 0.35
   };

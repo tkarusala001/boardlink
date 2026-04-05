@@ -28,20 +28,15 @@ const MessageSchema = z.object({
 });
 const RoomCodeSchema = z.string().regex(/^[2-9A-Z]{4}$/);
 
-// ── Maps ──────────────────────────────────────────────────────────────────────
-// roomCode -> { teacher: ws, students: Map<peerId, ws>, lastActivity: number }
-const rooms = new Map();
-// ip -> { count, resetTime }
-const rateLimitCache = new Map();
-// sessionId -> { roomCode, peerId, timer } — 30 s grace for reconnecting students
-const graceSessions = new Map();
+const rooms = new Map();          // roomCode -> { teacher, students, lastActivity }
+const rateLimitCache = new Map();  // ip -> { count, resetTime }
+const graceSessions = new Map();   // sessionId -> { roomCode, peerId, timer }
 
-// ── Room Garbage Collector ────────────────────────────────────────────────────
-// Sweeps abandoned / stale rooms every 60 s to prevent memory leaks
+// GC
 setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms) {
-    const isAbandoned = room.teacher.readyState !== WebSocket.OPEN && room.students.size === 0;
+    const isAbandoned = (!room.teacher || room.teacher.readyState !== WebSocket.OPEN) && room.students.size === 0;
     const isStale     = (now - (room.lastActivity || now)) > 60_000;
     if (isAbandoned || isStale) {
       rooms.delete(code);
@@ -77,7 +72,7 @@ wss.on('connection', (ws, req) => {
 
       // Version gate — kick stale clients
       if (v !== undefined && v < PROTOCOL_VERSION) {
-        ws.send(JSON.stringify({ type: 'SYS_OBSOLETE_CLIENT', message: 'Your client is outdated. Please refresh the page.' }));
+        ws.send(JSON.stringify({ type: 'SYS_OBSOLETE_CLIENT', message: 'Protocol version mismatch' }));
         ws.close();
         return;
       }
@@ -86,7 +81,6 @@ wss.on('connection', (ws, req) => {
 
       switch (type) {
 
-        // ── Teacher creates a room ────────────────────────────────────────────
         case 'CREATE_ROOM': {
           const newCode = generateRoomCode();
           rooms.set(newCode, { teacher: ws, students: new Map(), lastActivity: Date.now() });
@@ -97,7 +91,6 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
-        // ── Student joins for the first time ─────────────────────────────────
         case 'JOIN_ROOM': {
           // IP rate limit
           const now = Date.now();
@@ -151,7 +144,6 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
-        // ── Student reconnects within 30 s grace period ───────────────────────
         case 'REJOIN_ROOM': {
           const sessionId = payload?.sessionId;
           if (!sessionId || !graceSessions.has(sessionId)) {
@@ -192,7 +184,6 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
-        // ── WebRTC signaling: Teacher -> Student ──────────────────────────────
         case 'OFFER': {
           if (!isTeacher || !currentRoom || !rooms.has(currentRoom)) break;
           const room = rooms.get(currentRoom);
@@ -209,7 +200,6 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
-        // ── WebRTC signaling: Student -> Teacher ──────────────────────────────
         case 'ANSWER': {
           if (isTeacher || !currentRoom || !rooms.has(currentRoom)) break;
           const room = rooms.get(currentRoom);
@@ -220,7 +210,6 @@ wss.on('connection', (ws, req) => {
           break;
         }
 
-        // ── ICE candidates (bidirectional) ────────────────────────────────────
         case 'ICE_CANDIDATE': {
           if (!currentRoom || !rooms.has(currentRoom)) break;
           const room = rooms.get(currentRoom);

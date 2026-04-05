@@ -67,17 +67,17 @@
     <div id="view-student-live" style="display: none; width: 100%; max-width: 1400px;">
       <div id="viewport">
         <!-- Main Canvas -->
-        <canvas id="canvas-main"></canvas>
+        <canvas id="canvas-main" role="img" aria-label="Live teacher screen share"></canvas>
         
         <!-- Smart Focus Pane (Overlaid) -->
         <div id="focus-pane" class="card" style="position: absolute; bottom: 1rem; left: 1rem; width: 400px; height: 300px; padding: 0.5rem; display: none; z-index: 20; border: 2px solid green; overflow: hidden;">
-          <canvas id="canvas-focus" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
+          <canvas id="canvas-focus" role="img" aria-label="Zoomed focus region of teacher screen" style="width: 100%; height: 100%; object-fit: cover;"></canvas>
           <div id="focus-confidence" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; border: 2px solid transparent; transition: border-color 0.5s;"></div>
         </div>
 
         <!-- Attention Thumbnail (Spatial Awareness) -->
-        <div id="focus-thumbnail" style="position: absolute; top: 1rem; left: 1rem; width: 160px; aspect-ratio: 16/9; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border); border-radius: 4px; overflow: hidden; cursor: crosshair;">
-          <canvas id="canvas-thumb" style="width: 100%; height: 100%; opacity: 0.6;"></canvas>
+        <div id="focus-thumbnail" tabindex="0" role="button" aria-label="Click or press Enter to manually set focus region" style="position: absolute; top: 1rem; left: 1rem; width: 160px; aspect-ratio: 16/9; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border); border-radius: 4px; overflow: hidden; cursor: crosshair;">
+          <canvas id="canvas-thumb" role="img" aria-label="Thumbnail overview of screen" style="width: 100%; height: 100%; opacity: 0.6;"></canvas>
           <div id="thumb-highlight" style="position: absolute; top: 0; left: 0; width: 40px; height: 30px; border: 2px solid var(--accent-primary); background: rgba(255,204,0,0.1); pointer-events: none;"></div>
         </div>
 
