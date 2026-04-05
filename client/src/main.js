@@ -42,6 +42,17 @@ let processingWorker = null;
 let focusWorker = null;
 let focusPane = null;
 
+// WCAG: ARIA live-region announcer
+const srAnnouncer = document.getElementById('sr-announcer');
+function announce(msg) {
+  // Briefly clear then set to force re-announcement on identical strings
+  srAnnouncer.textContent = '';
+  requestAnimationFrame(() => { srAnnouncer.textContent = msg; });
+}
+
+// Ordered filter cycle for Shift+F shortcut
+const FILTER_CYCLE = ['none', 'light', 'medium', 'heavy'];
+
 function showView(viewName) {
   Object.values(views).forEach(v => v.style.display = 'none');
   views[viewName].style.display = viewName === 'studentLive' ? 'block' : 'block'; // Adjust for flex/grid if needed
@@ -70,11 +81,15 @@ btns.joinConfirm.onclick = async () => {
   if (code.length !== 4) return;
   
   await initSignaling();
-  signaling.send('JOIN_ROOM', code);
+  signaling.joinRoom(code);
 };
 
 btns.endSession.onclick = () => {
+  // Clear stored session so a page reload doesn't auto-rejoin
+  sessionStorage.removeItem('bl_session_id');
+  sessionStorage.removeItem('bl_room_code');
   if (rtc) rtc.close();
+  if (signaling) signaling.close();
   location.reload();
 };
 
@@ -84,7 +99,7 @@ async function initSignaling() {
   
   signaling.onMessage = async (msg) => {
     try {
-      const { type, roomCode, payload, message } = msg;
+      const { type, roomCode, payload, message, peerId } = msg;
 
       switch (type) {
         case 'ROOM_CREATED':
@@ -96,27 +111,50 @@ async function initSignaling() {
 
         case 'JOIN_SUCCESS':
           currentRoomCode = roomCode;
+          // Store sessionId in sessionStorage for reconnect recovery
+          if (msg.sessionId) sessionStorage.setItem('bl_session_id', msg.sessionId);
+          if (msg.roomCode)  sessionStorage.setItem('bl_room_code',  msg.roomCode);
           showView('studentLive');
+          if (rtc) rtc.setLocalPeerId(peerId);
           await startStudentSession(roomCode);
+          announce('Connected to classroom session.');
           break;
 
         case 'STUDENT_JOINED':
           status.studentCount.innerText = `${msg.studentCount} Students Connected`;
-          if (msg.studentId && rtc) {
-            await rtc.createStudentConnection(msg.studentId);
-          }
+          if (rtc) await rtc.onStudentJoined(peerId);
+          announce(`Student connected. ${msg.studentCount} total.`);
+          break;
+
+        case 'STUDENT_LEFT':
+          status.studentCount.innerText = `${msg.studentCount} Students Connected`;
+          if (rtc) await rtc.onStudentLeft(peerId);
+          announce(`Student disconnected. ${msg.studentCount} remaining.`);
+          break;
+
+        case 'STUDENT_REJOINED':
+          status.studentCount.innerText = `${msg.studentCount} Students Connected`;
+          if (rtc) await rtc.onStudentJoined(peerId); // re-create peer connection
           break;
 
         case 'OFFER':
-          if (rtc) await rtc.handleOffer(payload, msg.studentId);
+          if (rtc) await rtc.onSignalingOffer(payload);
           break;
 
         case 'ANSWER':
-          if (rtc) await rtc.handleAnswer(payload, msg.studentId);
+          if (rtc) await rtc.onSignalingAnswer(payload, peerId);
           break;
 
         case 'ICE_CANDIDATE':
-          if (rtc) await rtc.handleIceCandidate(payload, msg.studentId);
+          if (rtc) await rtc.onSignalingIceCandidate(payload, peerId);
+          break;
+
+        case 'REJOIN_SUCCESS':
+          // Student reconnected successfully — update sessionId and restore peerId
+          if (msg.sessionId) sessionStorage.setItem('bl_session_id', msg.sessionId);
+          if (rtc) rtc.setLocalPeerId(peerId);
+          announce('Reconnected to classroom session.');
+          status.joinError.style.display = 'none';
           break;
 
         case 'ERROR':
@@ -134,6 +172,7 @@ async function initSignaling() {
     status.joinError.style.display = 'block';
     status.joinError.style.backgroundColor = 'var(--accent-danger, #e74c3c)';
     status.joinError.style.color = 'white';
+    announce('Connection error: ' + msg);
   };
 
   signaling.onReconnecting = (attempt) => {
@@ -141,10 +180,18 @@ async function initSignaling() {
     status.joinError.style.display = 'block';
     status.joinError.style.backgroundColor = 'var(--accent-secondary)';
     status.joinError.style.color = 'black';
+    announce(`Connection lost. Reconnect attempt ${attempt}.`);
   };
 
   signaling.onOpen = () => {
     status.joinError.style.display = 'none';
+    // If we have a stored session, attempt transparent reconnect
+    const storedSession  = sessionStorage.getItem('bl_session_id');
+    const storedRoom     = sessionStorage.getItem('bl_room_code');
+    if (storedSession && storedRoom && signaling.reconnectAttempts > 0) {
+      console.log('[Session] Attempting REJOIN_ROOM with stored sessionId...');
+      signaling.rejoinRoom(storedRoom, storedSession);
+    }
   };
 
   try {
@@ -160,8 +207,9 @@ async function startTeacherSession(code) {
   try {
     rtc = new WebRTCClient(signaling, true);
     await rtc.start(code);
-    
-    // Track cursor position (REQ-010: 60Hz)
+    announce('Screen sharing started. Waiting for students.');
+
+    // Track cursor position (REQ-010)
     window.addEventListener('mousemove', (e) => {
       const x = e.clientX / window.innerWidth;
       const y = e.clientY / window.innerHeight;
@@ -169,7 +217,7 @@ async function startTeacherSession(code) {
     });
   } catch (err) {
     console.error('Failed to start teacher session:', err);
-    alert('Failed to start screen share. Please ensure you are on localhost or HTTPS, and that you granted screen permissions.');
+    alert('Failed to start screen share. Please ensure you are on localhost or HTTPS.');
     location.reload();
   }
 }
@@ -300,4 +348,28 @@ async function startStudentSession(code) {
     
     // Add a way to resume auto? Maybe double click or a 'Resume' button
   };
+  // ── Keyboard Shortcuts ─────────────────────────────────────────────────────
+  // Space  → Freeze frame (PIP)
+  // Shift+F → Cycle Bold-Ink filter
+  window.addEventListener('keydown', (e) => {
+    // Ignore if typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (pipHold) pipHold.capture();
+      announce('Frame frozen.');
+    }
+
+    if (e.shiftKey && e.key.toUpperCase() === 'F') {
+      e.preventDefault();
+      const idx = FILTER_CYCLE.indexOf(currentFilter);
+      currentFilter = FILTER_CYCLE[(idx + 1) % FILTER_CYCLE.length];
+      // Sync active state on filter buttons
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === currentFilter);
+      });
+      announce(`Filter: ${currentFilter}`);
+    }
+  });
 }

@@ -8,7 +8,9 @@
 
   --accent-primary: #ffcc00; /* Vibrant High-Contrast Yellow */
   --accent-secondary: #00e0ff; /* Cyan for contrast */
+  --accent-danger: #e74c3c;   /* Error / destructive actions */
   --accent-glow: rgba(255, 204, 0, 0.4);
+  --focus-ring: 0 0 0 3px var(--accent-primary), 0 0 0 5px var(--bg-primary);
 
   --text-primary: #ffffff;
   --text-secondary: #a9b1d6;
@@ -28,6 +30,19 @@
   margin: 0;
   padding: 0;
   cursor: inherit;
+}
+
+/* WCAG 2.1 AA: Screen-reader only utility - visually hidden but accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 body {
@@ -89,6 +104,18 @@ button:hover {
   box-shadow: 0 4px 15px var(--accent-glow);
 }
 
+/* WCAG 2.1 AA: High-contrast focus ring (>7:1) for keyboard navigation */
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  transform: translateY(-1px);
+}
+
+button.secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 button:active {
   transform: translateY(0);
 }
@@ -118,6 +145,18 @@ input:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+input:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--focus-ring);
+}
+
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
 }
 
 /* Room Code Display for Teacher */

@@ -7,7 +7,10 @@
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
-  <div id="app" class="container">
+  <!-- WCAG: Screen-reader live announcer for connection events -->
+  <div id="sr-announcer" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+
+  <div id="app" class="container" role="main">
     
     <!-- View 1: Landing -->
     <div id="view-landing" class="card">
@@ -15,8 +18,8 @@
       <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.2rem;">Close the visibility gap in your classroom.</p>
       
       <div style="display: grid; gap: 1rem;">
-        <button id="btn-share-start" style="width: 100%;">I AM A TEACHER</button>
-        <button id="btn-join-start" class="secondary" style="width: 100%;">I AM A STUDENT</button>
+        <button id="btn-share-start" style="width: 100%;" aria-label="Start screen sharing as a teacher">I AM A TEACHER</button>
+        <button id="btn-join-start" class="secondary" style="width: 100%;" aria-label="Join a session as a student">I AM A STUDENT</button>
       </div>
     </div>
 
@@ -37,8 +40,8 @@
       </div>
 
       <div style="display: flex; gap: 1rem; justify-content: center;">
-        <span id="student-count-badge" class="status-badge">0 Students Connected</span>
-        <button id="btn-end-session" class="secondary" style="border-color: var(--error); color: var(--error);">End Session</button>
+        <span id="student-count-badge" class="status-badge" role="status" aria-live="polite">0 Students Connected</span>
+        <button id="btn-end-session" class="secondary" style="border-color: var(--error); color: var(--error);" aria-label="End screen sharing session">End Session</button>
       </div>
       
       <video id="teacher-preview" style="display: none;"></video>
@@ -49,11 +52,12 @@
       <h2>Enter Room Code</h2>
       <p style="color: var(--text-secondary); margin-bottom: 2rem;">Ask your teacher for the 4-digit code.</p>
       
-      <input type="text" id="input-room-code" placeholder="----" maxlength="4" autofocus>
+      <input type="text" id="input-room-code" placeholder="----" maxlength="4" autofocus
+             aria-label="4-character room code" autocomplete="off" spellcheck="false">
       
       <div style="display: grid; gap: 1rem;">
-        <button id="btn-join-confirm" style="width: 100%;">CONNECT</button>
-        <button id="btn-back-to-landing" class="secondary" style="width: 100%;">BACK</button>
+        <button id="btn-join-confirm" style="width: 100%;" aria-label="Connect to the room">CONNECT</button>
+        <button id="btn-back-to-landing" class="secondary" style="width: 100%;" aria-label="Go back to the home screen">BACK</button>
       </div>
       
       <div id="join-error" style="color: var(--error); margin-top: 1.5rem; display: none;"></div>
@@ -78,12 +82,12 @@
         </div>
 
         <!-- Controls Overlay -->
-        <div id="controls-top" style="position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; z-index: 10;">
-          <div class="status-badge connected">
+        <div id="controls-top" style="position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; z-index: 10;" role="toolbar" aria-label="Stream controls">
+          <div class="status-badge connected" role="status">
             <span class="dot"></span>
             LIVE
           </div>
-          <button id="btn-student-settings" style="padding: 0.4rem 1rem; font-size: 0.9rem;">Settings</button>
+          <button id="btn-student-settings" style="padding: 0.4rem 1rem; font-size: 0.9rem;" aria-label="Open display settings" aria-controls="settings-panel">Settings</button>
         </div>
 
         <div id="overlay-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; text-align: center;">
@@ -116,10 +120,15 @@
         </div>
 
         <div style="display: flex; align-items: flex-end; gap: 0.5rem;">
-          <button id="btn-freeze-frame" class="secondary" style="flex: 1;">Freeze (PIP)</button>
-          <button id="btn-toggle-focus" class="secondary" style="flex: 1; border-color: var(--accent-secondary); color: var(--accent-secondary);">Focus Mode</button>
+          <button id="btn-freeze-frame" class="secondary" style="flex: 1;" aria-label="Freeze frame into picture-in-picture (Space)">Freeze <kbd style="font-size:0.7rem;opacity:0.7">Space</kbd></button>
+          <button id="btn-toggle-focus" class="secondary" style="flex: 1; border-color: var(--accent-secondary); color: var(--accent-secondary);" aria-label="Toggle Focus Mode">Focus Mode</button>
         </div>
       </div>
+
+      <!-- Keyboard shortcuts legend -->
+      <p style="text-align:center; color: var(--text-muted); font-size: 0.75rem; margin-top: 0.75rem;">
+        <kbd>Space</kbd> Freeze &nbsp;·&nbsp; <kbd>Shift+F</kbd> Cycle filter
+      </p>
     </div>
 
   </div>

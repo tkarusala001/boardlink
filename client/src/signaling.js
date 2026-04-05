@@ -16,6 +16,33 @@ export default class SignalingClient {
     this.messageQueue = [];
   }
 
+  // ── Semantic helpers (preferred over raw send()) ──────────────────────────
+
+  createRoom() {
+    this.send('CREATE_ROOM');
+  }
+
+  joinRoom(roomCode) {
+    this.send('JOIN_ROOM', roomCode);
+  }
+
+  rejoinRoom(roomCode, sessionId) {
+    this.send('REJOIN_ROOM', roomCode, { sessionId });
+  }
+
+  sendOffer(roomCode, targetPeerId, offer) {
+    this.send('OFFER', roomCode, { targetPeerId, offer });
+  }
+
+  sendAnswer(roomCode, answer) {
+    this.send('ANSWER', roomCode, answer);
+  }
+
+  sendIceCandidate(roomCode, candidate, targetPeerId = null) {
+    const payload = targetPeerId ? { targetPeerId, candidate } : candidate;
+    this.send('ICE_CANDIDATE', roomCode, payload);
+  }
+
   connect() {
     this.isManualClose = false;
     return new Promise((resolve, reject) => {
