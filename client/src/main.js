@@ -45,9 +45,8 @@ let processingInFlight = false;
 
 const srAnnouncer = document.getElementById('sr-announcer');
 function announce(msg) {
-  // Briefly clear then set to force re-announcement on identical strings
   srAnnouncer.textContent = '';
-  requestAnimationFrame(() => { srAnnouncer.textContent = msg; });
+  requestAnimationFrame(() => { srAnnouncer.textContent = msg; }); // re-trigger on dupes
 }
 
 // Ordered filter cycle for Shift+F shortcut
@@ -91,7 +90,7 @@ btns.endSession.onclick = () => {
 
 async function initSignaling() {
   if (signaling) return;
-  signaling = new SignalingClient('ws://localhost:8082'); // Migrated to 8082 for reliability
+  signaling = new SignalingClient('ws://localhost:8082');
   
   signaling.onMessage = async (msg) => {
     try {
@@ -107,7 +106,6 @@ async function initSignaling() {
 
         case 'JOIN_SUCCESS':
           currentRoomCode = roomCode;
-          // Store sessionId in sessionStorage for reconnect recovery
           if (msg.sessionId) sessionStorage.setItem('bl_session_id', msg.sessionId);
           if (msg.roomCode)  sessionStorage.setItem('bl_room_code',  msg.roomCode);
           showView('studentLive');
@@ -118,35 +116,34 @@ async function initSignaling() {
 
         case 'STUDENT_JOINED':
           status.studentCount.innerText = `${msg.studentCount} Students Connected`;
-          if (rtc) await rtc.onStudentJoined(peerId);
+          if (rtc) await rtc.createStudentConnection(peerId);
           announce(`Student connected. ${msg.studentCount} total.`);
           break;
 
         case 'STUDENT_LEFT':
           status.studentCount.innerText = `${msg.studentCount} Students Connected`;
-          if (rtc) await rtc.onStudentLeft(peerId);
+          if (rtc) rtc.onStudentLeft(peerId);
           announce(`Student disconnected. ${msg.studentCount} remaining.`);
           break;
 
         case 'STUDENT_REJOINED':
           status.studentCount.innerText = `${msg.studentCount} Students Connected`;
-          if (rtc) await rtc.onStudentJoined(peerId); // re-create peer connection
+          if (rtc) await rtc.createStudentConnection(peerId);
           break;
 
         case 'OFFER':
-          if (rtc) await rtc.onSignalingOffer(payload);
+          if (rtc) await rtc.handleOffer(payload);
           break;
 
         case 'ANSWER':
-          if (rtc) await rtc.onSignalingAnswer(payload, peerId);
+          if (rtc) await rtc.handleAnswer(payload, peerId);
           break;
 
         case 'ICE_CANDIDATE':
-          if (rtc) await rtc.onSignalingIceCandidate(payload, peerId);
+          if (rtc) await rtc.handleIceCandidate(payload, peerId);
           break;
 
         case 'REJOIN_SUCCESS':
-          // Student reconnected successfully — update sessionId and restore peerId
           if (msg.sessionId) sessionStorage.setItem('bl_session_id', msg.sessionId);
           if (rtc) rtc.setLocalPeerId(peerId);
           announce('Reconnected to classroom session.');
@@ -181,11 +178,9 @@ async function initSignaling() {
 
   signaling.onOpen = () => {
     status.joinError.style.display = 'none';
-    // If we have a stored session, attempt transparent reconnect
-    const storedSession  = sessionStorage.getItem('bl_session_id');
-    const storedRoom     = sessionStorage.getItem('bl_room_code');
+    const storedSession = sessionStorage.getItem('bl_session_id');
+    const storedRoom    = sessionStorage.getItem('bl_room_code');
     if (storedSession && storedRoom && signaling.reconnectAttempts > 0) {
-      console.log('[Session] Attempting REJOIN_ROOM with stored sessionId...');
       signaling.rejoinRoom(storedRoom, storedSession);
     }
   };
@@ -225,7 +220,7 @@ async function startStudentSession(code) {
   const ctx = canvas.getContext('2d');
 
   cursorGlow = new CursorGlow(viewport);
-  cursorGlow.applySettings(); // Initial apply
+  cursorGlow.applySettings();
   
   pipHold = new PipHold(canvas, viewport);
 
@@ -240,9 +235,11 @@ async function startStudentSession(code) {
   };
 
   processingWorker.onmessage = (e) => {
-    if (e.data.type === 'FRAME_PROCESSED' && currentFilter !== 'none') {
-       processingInFlight = false;
-       ctx.putImageData(e.data.payload.imageData, 0, 0);
+    if (e.data.type === 'FRAME_PROCESSED') {
+      processingInFlight = false;
+      if (currentFilter !== 'none') {
+        ctx.putImageData(e.data.payload.imageData, 0, 0);
+      }
     }
   };
 
@@ -250,18 +247,24 @@ async function startStudentSession(code) {
     const video = document.createElement('video');
     video.srcObject = stream;
     video.play();
-    
+
+    const thumbCanvas = document.createElement('canvas');
+    let thumbCtx = null;
+
     // Rendering loop
     const render = () => {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        // Init Focus Worker if first frame
+        // Init on first frame or dimension change
         if (canvas.width !== video.videoWidth) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          thumbCanvas.width = Math.floor(video.videoWidth / 10);
+          thumbCanvas.height = Math.floor(video.videoHeight / 10);
+          thumbCtx = thumbCanvas.getContext('2d');
           focusWorker.postMessage({ type: 'INIT', payload: { width: canvas.width, height: canvas.height } });
-          
+
           focusPane = new FocusPane(
-            video, // Updated to use video directly
+            video,
             document.getElementById('canvas-focus'),
             document.getElementById('canvas-thumb'),
             document.getElementById('thumb-highlight')
@@ -269,7 +272,7 @@ async function startStudentSession(code) {
         }
 
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
+
         if (currentFilter !== 'none' && !processingInFlight) {
           processingInFlight = true;
           createImageBitmap(video).then(bitmap => {
@@ -279,19 +282,14 @@ async function startStudentSession(code) {
             }, [bitmap]);
           });
         }
-        
+
         // Send every other frame to focus worker
-        if (Math.random() > 0.5) {
-          const thumbCanvas = document.createElement('canvas');
-          thumbCanvas.width = video.videoWidth / 10;
-          thumbCanvas.height = video.videoHeight / 10;
-          const thumbCtx = thumbCanvas.getContext('2d');
+        if (Math.random() > 0.5 && thumbCtx) {
           thumbCtx.drawImage(video, 0, 0, thumbCanvas.width, thumbCanvas.height);
           const thumbData = thumbCtx.getImageData(0, 0, thumbCanvas.width, thumbCanvas.height);
           focusWorker.postMessage({ type: 'PROCESS_FRAME', payload: { imageData: thumbData } });
         }
-        
-        // Apply Palette Class
+
         canvas.className = currentPalette !== 'default' ? `palette-${currentPalette}` : '';
       }
       requestAnimationFrame(render);
@@ -308,7 +306,6 @@ async function startStudentSession(code) {
 
   await rtc.start(code);
 
-  // Setup Student UI Listeners
   document.getElementById('palette-selector').onchange = (e) => {
     currentPalette = e.target.value;
   };
@@ -320,6 +317,14 @@ async function startStudentSession(code) {
       currentFilter = btn.dataset.filter;
     };
   });
+
+  const settingsPanel = document.getElementById('settings-panel');
+  const settingsBtn = document.getElementById('btn-student-settings');
+  settingsBtn.onclick = () => {
+    const open = settingsPanel.style.display !== 'none';
+    settingsPanel.style.display = open ? 'none' : 'grid';
+    settingsBtn.setAttribute('aria-expanded', String(!open));
+  };
 
   document.getElementById('btn-freeze-frame').onclick = () => {
     if (pipHold) pipHold.capture();
@@ -346,14 +351,11 @@ async function startStudentSession(code) {
     if (!focusPane) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      // Toggle back to auto focus on Enter/Space
       focusPane.toggleAuto(true);
       announce('Focus mode set to automatic.');
     }
   });
-  // Keyboard shortcuts: Space = freeze, Shift+F = cycle filter
   window.addEventListener('keydown', (e) => {
-    // Ignore if typing in an input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     if (e.code === 'Space') {
@@ -366,7 +368,6 @@ async function startStudentSession(code) {
       e.preventDefault();
       const idx = FILTER_CYCLE.indexOf(currentFilter);
       currentFilter = FILTER_CYCLE[(idx + 1) % FILTER_CYCLE.length];
-      // Sync active state on filter buttons
       document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === currentFilter);
       });

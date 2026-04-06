@@ -35,7 +35,7 @@ export default class WebRTCClient {
         },
         audio: false
       });
-      // Teacher waits for students to join before creating connections in createStudentConnection()
+      // teacher waits; connections created in createStudentConnection()
     } else {
       // Student side
       this.pc = new RTCPeerConnection(this.config);
@@ -53,7 +53,7 @@ export default class WebRTCClient {
       this.pc.onconnectionstatechange = () => {
         console.log(`[WebRTC] Student connection state: ${this.pc.connectionState}`);
         if (this.pc.connectionState === 'failed') {
-          console.warn('[WebRTC] ICE failed on student side — signaling loss or NAT issue.');
+          console.warn('[WebRTC] ICE failed on student side');
         }
       };
 
@@ -72,19 +72,19 @@ export default class WebRTCClient {
     const pc = new RTCPeerConnection(this.config);
     this.stream.getTracks().forEach(track => pc.addTrack(track, this.stream));
     
-    // Unreliable channel for low-latency cursor updates
+    // unreliable, for cursor updates
     const dataChannel = pc.createDataChannel('cursorUpdates', { ordered: false, maxRetransmits: 0 });
     
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.signaling.send('ICE_CANDIDATE', this.roomCode, event.candidate, studentId);
+        this.signaling.sendIceCandidate(this.roomCode, event.candidate, studentId);
       }
     };
 
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC] Teacher -> Student ${studentId}: ${pc.connectionState}`);
       if (pc.connectionState === 'failed') {
-        console.warn(`[WebRTC] Connection failed for student ${studentId}. Attempting ICE restart...`);
+        console.warn(`[WebRTC] failed for ${studentId}, restarting ICE`);
         pc.restartIce();
       }
     };
@@ -93,7 +93,7 @@ export default class WebRTCClient {
     
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    this.signaling.send('OFFER', this.roomCode, offer, studentId);
+    this.signaling.sendOffer(this.roomCode, studentId, offer);
   }
 
   async handleOffer(offer) {
@@ -128,6 +128,18 @@ export default class WebRTCClient {
     } catch (err) {
       console.error('[WebRTC] Failed to add ICE candidate:', err);
     }
+  }
+
+  setLocalPeerId(id) {
+    this.localPeerId = id;
+  }
+
+  onStudentLeft(studentId) {
+    const peer = this.peers.get(studentId);
+    if (!peer) return;
+    if (peer.dataChannel) peer.dataChannel.close();
+    peer.pc.close();
+    this.peers.delete(studentId);
   }
 
   sendCursor(x, y) {

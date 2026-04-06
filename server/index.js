@@ -40,8 +40,12 @@ setInterval(() => {
     const isStale     = (now - (room.lastActivity || now)) > 60_000;
     if (isAbandoned || isStale) {
       rooms.delete(code);
-      console.log(`[GC] Collected ghost room: ${code} (abandoned=${isAbandoned}, stale=${isStale})`);
+      console.log(`[GC] removed room ${code}`);
     }
+  }
+  // Clean up expired rate limit entries
+  for (const [ip, record] of rateLimitCache) {
+    if (now > record.resetTime) rateLimitCache.delete(ip);
   }
 }, 60_000);
 
@@ -111,7 +115,6 @@ wss.on('connection', (ws, req) => {
 
           const room = rooms.get(roomCode);
 
-          // Collision-safe peerId generation
           let attempts = 0;
           do { peerId = generatePeerId(); attempts++; }
           while (room.students.has(peerId) && attempts < 10);
@@ -125,10 +128,7 @@ wss.on('connection', (ws, req) => {
           currentRoom       = roomCode;
           isTeacher         = false;
 
-          // The sessionId we send back is used by the client for REJOIN_ROOM.
-          // We create a grace entry immediately so reconnect works even on the first drop.
-          const sessionId   = generatePeerId();
-          // Start a long-lived grace entry (refreshed on every clean disconnect)
+          const sessionId = generatePeerId();
           graceSessions.set(sessionId, { roomCode, peerId, timer: null });
 
           ws.send(JSON.stringify({ type: 'JOIN_SUCCESS', roomCode, peerId, sessionId }));
@@ -167,7 +167,6 @@ wss.on('connection', (ws, req) => {
           currentRoom      = grace.roomCode;
           isTeacher        = false;
 
-          // Issue a fresh sessionId for the next possible disconnect
           const newSessionId = generatePeerId();
           graceSessions.set(newSessionId, { roomCode: grace.roomCode, peerId, timer: null });
 
@@ -247,13 +246,11 @@ wss.on('connection', (ws, req) => {
     const room = rooms.get(currentRoom);
 
     if (isTeacher) {
-      // Teacher left — notify all students and delete room
       room.students.forEach((studentWs) => {
         if (studentWs.readyState === WebSocket.OPEN) {
-          studentWs.send(JSON.stringify({ type: 'ERROR', message: 'Your session has ended — the teacher disconnected.' }));
+          studentWs.send(JSON.stringify({ type: 'ERROR', message: 'Your session has ended - the teacher disconnected.' }));
         }
       });
-      // Also expire all grace sessions for this room
       for (const [sid, g] of graceSessions) {
         if (g.roomCode === currentRoom) {
           if (g.timer) clearTimeout(g.timer);
@@ -264,7 +261,6 @@ wss.on('connection', (ws, req) => {
       console.log(`Room deleted (teacher left): ${currentRoom}`);
 
     } else {
-      // Student disconnected — find their peerId if not already set
       if (!peerId) {
         for (const [id, studentWs] of room.students.entries()) {
           if (studentWs === ws) { peerId = id; break; }
@@ -275,7 +271,6 @@ wss.on('connection', (ws, req) => {
       room.students.delete(peerId);
       room.lastActivity = Date.now();
 
-      // Start 30 s grace-period timer for any existing grace entry for this peer
       for (const [sid, g] of graceSessions) {
         if (g.roomCode === currentRoom && g.peerId === peerId) {
           if (g.timer) clearTimeout(g.timer);

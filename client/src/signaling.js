@@ -8,7 +8,7 @@ export default class SignalingClient {
     this.onOpen = null;
     this.onClose = null;
     this.onReconnecting = null;
-    this.onObsoleteClient = null; // Called when server rejects client as outdated
+    this.onObsoleteClient = null;
     
     this.reconnectAttempts = 0;
     this.maxReconnectDelay = 30000;
@@ -44,14 +44,13 @@ export default class SignalingClient {
   connect() {
     this.isManualClose = false;
     return new Promise((resolve, reject) => {
-      console.log(`Connecting to signaling: ${this.url} (Port 8082 Migration)`);
+      console.log(`Connecting to signaling: ${this.url}`);
       this.ws = new WebSocket(this.url);
       
       this.ws.onopen = () => {
         console.log('Signaling connected');
         this.reconnectAttempts = 0;
         
-        // Flush Queued Messages
         while (this.messageQueue.length > 0) {
           const msg = this.messageQueue.shift();
           this.ws.send(msg);
@@ -64,11 +63,10 @@ export default class SignalingClient {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data.toString());
-          // Handle server-side version rejection
           if (message.type === 'SYS_OBSOLETE_CLIENT') {
-            console.error('[Signaling] Server rejected client as outdated:', message.message);
+            console.error('[Signaling] outdated client:', message.message);
             if (this.onObsoleteClient) this.onObsoleteClient(message.message);
-            this.isManualClose = true; // Don't auto-reconnect on version mismatch
+            this.isManualClose = true;
             return;
           }
           if (this.onMessage) this.onMessage(message);
@@ -87,7 +85,6 @@ export default class SignalingClient {
 
       this.ws.onerror = (err) => {
         console.error('Signaling error', err);
-        // Don't reject if we are already trying to reconnect
         if (this.reconnectAttempts === 0) reject(err);
       };
     });
@@ -95,11 +92,16 @@ export default class SignalingClient {
 
   reconnect() {
     this.reconnectAttempts++;
+    if (this.reconnectAttempts > 15) {
+      console.warn('[Signaling] Max reconnect attempts reached. Please refresh.');
+      if (this.onClose) this.onClose();
+      return;
+    }
     const delay = Math.min(Math.pow(2, this.reconnectAttempts) * 1000, this.maxReconnectDelay);
-    
+
     console.log(`Attempting reconnection ${this.reconnectAttempts} in ${delay}ms...`);
     if (this.onReconnecting) this.onReconnecting(this.reconnectAttempts);
-    
+
     setTimeout(() => this.connect().catch(() => {}), delay);
   }
 
@@ -108,7 +110,7 @@ export default class SignalingClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(msg);
     } else {
-      console.warn(`Buffering ${type}: Signaling not yet open.`);
+      console.warn('queuing ' + type);
       this.messageQueue.push(msg);
     }
   }

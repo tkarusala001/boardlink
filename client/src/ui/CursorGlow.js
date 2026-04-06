@@ -55,15 +55,14 @@ export default class CursorGlow {
   }
 
   animate() {
-    // Lerp for smooth motion (REQ-016)
+    // Lerp for smooth motion
     this.x += (this.targetX - this.x) * 0.2;
     this.y += (this.targetY - this.y) * 0.2;
 
     this.element.style.left = `${this.x}px`;
     this.element.style.top = `${this.y}px`;
 
-    // Continuous pulsing scale (REQ-013)
-    const time = Date.now() / 600; // 1.2s cycle
+    const time = Date.now() / 600;
     const scale = 0.85 + Math.sin(time) * 0.15;
     this.element.style.transform = `translate(-50%, -50%) scale(${scale})`;
 

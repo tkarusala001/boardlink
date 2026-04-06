@@ -1,4 +1,4 @@
-// Focus Worker — fuses cursor + temporal signals to find the active region
+// focus worker - cursor + temporal heatmap
 
 let width = 0;
 let height = 0;
@@ -52,12 +52,11 @@ function updateCursorHeatmap(nx, ny) {
   const mx = Math.floor(nx * mapW);
   const my = Math.floor(ny * mapH);
   
-  // Decaying existing heatmap
   for (let i = 0; i < cursorMap.length; i++) {
     cursorMap[i] *= decayPerFrame;
   }
-  
-  // Add a Gaussian pulse at cursor location
+
+  // gaussian pulse at cursor
   const radius = 5;
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -100,7 +99,6 @@ function updateTemporalMap(imageData) {
 function fuseSignals() {
   for (let i = 0; i < attnMap.length; i++) {
     attnMap[i] = (cursorMap[i] * weights.cursor) + (diffMap[i] * weights.temporal);
-    // (Stroke density omitted for initial pass)
   }
 }
 

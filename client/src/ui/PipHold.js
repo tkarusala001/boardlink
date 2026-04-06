@@ -3,7 +3,7 @@ export default class PipHold {
     this.canvas = canvas;
     this.container = container;
     this.holds = [];
-    this.maxHolds = 3; // REQ-029
+    this.maxHolds = 3;
   }
 
   capture() {
@@ -34,6 +34,7 @@ export default class PipHold {
     // Close button
     const closeBtn = document.createElement('button');
     closeBtn.innerText = '✕';
+    closeBtn.setAttribute('aria-label', 'Close frozen frame');
     closeBtn.style.position = 'absolute';
     closeBtn.style.top = '0';
     closeBtn.style.right = '0';
