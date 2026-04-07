@@ -83,6 +83,8 @@ btns.endSession.onclick = () => {
   // Clear stored session so a page reload doesn't auto-rejoin
   sessionStorage.removeItem('bl_session_id');
   sessionStorage.removeItem('bl_room_code');
+  const monitor = document.getElementById('teacher-monitor');
+  if (monitor) monitor.style.display = 'none';
   if (rtc) rtc.close();
   if (signaling) signaling.close();
   location.reload();
@@ -200,6 +202,18 @@ async function startTeacherSession(code) {
     await rtc.start(code);
     announce('Screen sharing started. Waiting for students.');
 
+    // Wire up teacher monitor preview
+    const monitor = document.getElementById('teacher-monitor');
+    const previewVideo = document.getElementById('teacher-preview-video');
+    if (monitor && previewVideo && rtc.stream) {
+      previewVideo.srcObject = rtc.stream;
+      previewVideo.muted = true;
+      previewVideo.playsInline = true;
+      previewVideo.play().catch(e => console.warn('[Teacher] preview play failed:', e));
+      monitor.style.display = 'block';
+      startMonitorDiagnostics();
+    }
+
     window.addEventListener('mousemove', (e) => {
       const x = e.clientX / window.innerWidth;
       const y = e.clientY / window.innerHeight;
@@ -210,6 +224,40 @@ async function startTeacherSession(code) {
     alert('Failed to start screen share. Please ensure you are on localhost or HTTPS.');
     location.reload();
   }
+}
+
+function startMonitorDiagnostics() {
+  const streamInfoEl = document.getElementById('monitor-stream-info');
+  const diagEl = document.getElementById('monitor-diag');
+  if (!diagEl) return;
+
+  function update() {
+    if (!rtc) return;
+
+    // Stream resolution/fps
+    const track = rtc.stream?.getVideoTracks()[0];
+    if (track && streamInfoEl) {
+      const s = track.getSettings();
+      streamInfoEl.textContent = s.width ? `${s.width}×${s.height} ${(s.frameRate || 0).toFixed(0)}fps` : '';
+    }
+
+    // Per-peer connection states
+    const lines = [];
+    if (rtc.peers.size === 0) {
+      lines.push('No students connected yet');
+    } else {
+      for (const [id, peer] of rtc.peers) {
+        const state = peer.pc.connectionState;
+        const ice = peer.pc.iceConnectionState;
+        const icon = state === 'connected' ? '●' : state === 'connecting' ? '◌' : state === 'failed' ? '✕' : '○';
+        lines.push(`${icon} ${id.slice(0, 6)}  conn:${state}  ice:${ice}`);
+      }
+    }
+    diagEl.textContent = lines.join('\n');
+
+    requestAnimationFrame(update);
+  }
+  update();
 }
 
 async function startStudentSession(code) {
@@ -243,10 +291,18 @@ async function startStudentSession(code) {
     }
   };
 
+  // Show connecting overlay until stream arrives
+  const overlayStatus = document.getElementById('overlay-status');
+  const overlayMsg = document.getElementById('overlay-msg');
+  if (overlayStatus) { overlayStatus.style.display = 'block'; overlayMsg.textContent = 'Waiting for stream…'; }
+
   rtc.onStream = (stream) => {
+    if (overlayStatus) overlayStatus.style.display = 'none';
     const video = document.createElement('video');
     video.srcObject = stream;
-    video.play();
+    video.muted = true;
+    video.playsInline = true;
+    video.play().catch(err => console.error('[Student] video.play() failed:', err));
 
     const thumbCanvas = document.createElement('canvas');
     let thumbCtx = null;

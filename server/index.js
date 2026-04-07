@@ -9,7 +9,7 @@ const generatePeerId   = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 
 const PORT = 8082;
 const wss = new WebSocketServer({
   port: PORT,
-  maxPayload: 4096, // Hard limit 4KB to prevent spam
+  maxPayload: 131072, // 128KB — SDP offers/answers for screen share can be 3-5KB; 4KB was too tight
   perMessageDeflate: {
     zlibDeflateOptions: { chunkSize: 1024, memLevel: 7, level: 3 },
     zlibInflateOptions: { chunkSize: 10 * 1024 }
