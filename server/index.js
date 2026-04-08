@@ -6,7 +6,7 @@ import { z } from 'zod';
 const generateRoomCode = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 4);
 const generatePeerId   = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 
-const PORT = 8082;
+const PORT = process.env.PORT || 8082;
 const wss = new WebSocketServer({
   port: PORT,
   maxPayload: 131072, // 128KB — SDP offers/answers for screen share can be 3-5KB; 4KB was too tight
