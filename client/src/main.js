@@ -92,7 +92,11 @@ btns.endSession.onclick = () => {
 
 async function initSignaling() {
   if (signaling) return;
-  signaling = new SignalingClient('ws://localhost:8082');
+  // Use Fly.io endpoint in production, localhost in development
+  const signalingUrl = process.env.NODE_ENV === 'production'
+    ? 'wss://boardlink.fly.dev'
+    : 'ws://localhost:8082';
+  signaling = new SignalingClient(signalingUrl);
   
   signaling.onMessage = async (msg) => {
     try {
