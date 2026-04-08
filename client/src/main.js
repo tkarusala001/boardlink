@@ -92,10 +92,14 @@ btns.endSession.onclick = () => {
 
 async function initSignaling() {
   if (signaling) return;
-  // Use Fly.io endpoint in production, localhost in development
-  const signalingUrl = process.env.NODE_ENV === 'production'
+  // In Vite, we must use import.meta.env to check the environment
+  const signalingUrl = import.meta.env.PROD
     ? 'wss://boardlink.fly.dev'
     : 'ws://localhost:8082';
+    
+  console.log('[App] Environment PROD:', import.meta.env.PROD);
+  console.log('[App] Choosing signaling URL:', signalingUrl);
+  
   signaling = new SignalingClient(signalingUrl);
   
   signaling.onMessage = async (msg) => {
