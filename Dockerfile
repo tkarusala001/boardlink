@@ -2,21 +2,30 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install only production dependencies
-COPY server/package*.json ./
-RUN npm ci --omit=dev
+# Build the client SPA
+COPY client/package*.json ./client/
+RUN cd client && npm ci
+COPY client/ ./client/
+RUN cd client && npm run build
+
+# Install server production dependencies
+COPY server/package*.json ./server/
+RUN cd server && npm ci --omit=dev
 
 # Copy the server source
-COPY server/ ./
+COPY server/*.js ./server/
 
 # ---- Run stage -----------------------------------------------------------
 FROM node:20-alpine
 WORKDIR /app
 
-# Copy the built files from the builder stage
-COPY --from=builder /app ./
+# Copy server + built client from the builder stage
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/client/dist ./client/dist
 
-# Expose the port used by the WebSocket server
+WORKDIR /app/server
+
+# Expose the port used by the HTTP + WebSocket server
 EXPOSE 8082
 
 # Start the server

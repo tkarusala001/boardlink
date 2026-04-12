@@ -1,5 +1,5 @@
 export default class WebRTCClient {
-  constructor(signaling, isTeacher = false) {
+  constructor(signaling, isTeacher = false, iceConfig = null) {
     this.signaling = signaling;
     this.isTeacher = isTeacher;
     this.roomCode = null;
@@ -14,10 +14,11 @@ export default class WebRTCClient {
     this.dataChannel = null;
     this.onData = null;
 
-    this.config = {
+    // ICE configuration — accept custom config or use defaults
+    this.config = iceConfig || {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
       ]
     };
   }

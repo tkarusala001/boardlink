@@ -92,13 +92,12 @@ btns.endSession.onclick = () => {
 
 async function initSignaling() {
   if (signaling) return;
-  // In Vite, we must use import.meta.env to check the environment
-  const signalingUrl = import.meta.env.PROD
-    ? 'wss://boardlink.fly.dev'
-    : 'ws://localhost:8082';
-    
-  console.log('[App] Environment PROD:', import.meta.env.PROD);
-  console.log('[App] Choosing signaling URL:', signalingUrl);
+  // Derive WebSocket URL from current origin so it works on any deployment.
+  // Override with VITE_WS_URL at build time for split client/server deployments.
+  const signalingUrl = import.meta.env.VITE_WS_URL
+    || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+
+  console.log('[App] Signaling URL:', signalingUrl);
   
   signaling = new SignalingClient(signalingUrl);
   

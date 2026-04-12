@@ -7,10 +7,17 @@ primary_region = "ewr"
 [[services]]
   internal_port = 8082
   protocol = "tcp"
-  # Enable HTTP(s) routing (optional, can be removed if you only need raw WS)
   [[services.ports]]
     handlers = ["tls", "http"]
     port = 443
   [[services.ports]]
     handlers = ["http"]
     port = 80
+
+  [[services.http_checks]]
+    interval = 10000
+    grace_period = "5s"
+    method = "get"
+    path = "/health"
+    protocol = "http"
+    timeout = 2000
