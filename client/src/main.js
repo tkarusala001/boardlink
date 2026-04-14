@@ -92,10 +92,8 @@ btns.endSession.onclick = () => {
 
 async function initSignaling() {
   if (signaling) return;
-  // Derive WebSocket URL from current origin so it works on any deployment.
-  // Override with VITE_WS_URL at build time for split client/server deployments.
-  const signalingUrl = import.meta.env.VITE_WS_URL
-    || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  // Prefer explicit env config, then fallback to deployment-aware defaults.
+  const signalingUrl = resolveSignalingUrl();
 
   console.log('[App] Signaling URL:', signalingUrl);
   
@@ -201,6 +199,20 @@ async function initSignaling() {
     status.joinError.innerText = "Cannot reach signaling server. Please check your connection.";
     status.joinError.style.display = 'block';
   }
+}
+
+function resolveSignalingUrl() {
+  const explicitUrl = (import.meta.env.VITE_WS_URL || '').trim();
+  if (explicitUrl) return explicitUrl;
+
+  const isVercelPreview = location.hostname.endsWith('.vercel.app');
+  if (isVercelPreview) {
+    // BoardLink production backend is hosted on Fly when frontend is on Vercel.
+    return 'wss://boardlink.fly.dev';
+  }
+
+  const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  return scheme + location.host;
 }
 
 async function startTeacherSession(code) {

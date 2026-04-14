@@ -70,7 +70,7 @@ boardlink/
 
 | Variable       | Default        | Description |
 |----------------|----------------|-------------|
-| `VITE_WS_URL`  | *(auto-detect)* | WebSocket URL override. If not set, the client derives it from the current page origin (`wss://yourdomain.com` or `ws://localhost:PORT`). Only needed for split client/server deployments. |
+| `VITE_WS_URL`  | *(auto-detect)* | WebSocket URL override. If not set, the client uses same-origin by default and falls back to `wss://boardlink.fly.dev` for `*.vercel.app` hosts. Set this explicitly for any custom split deployment. |
 
 ---
 
@@ -168,16 +168,15 @@ The server will:
 If you prefer hosting the client on Vercel and the server elsewhere:
 
 ```bash
-# Deploy client to Vercel
-cd client
-VITE_WS_URL=wss://your-server.fly.dev npm run build
-# Then deploy dist/ to Vercel (vercel.json is pre-configured)
+# Deploy client to Vercel from repo root
+# root vercel.json uses client/ as the build target and outputDirectory
+VITE_WS_URL=wss://your-server.fly.dev npx vercel --prod
 
 # Deploy server to Fly.io (or any host)
 fly deploy
 ```
 
-Set `VITE_WS_URL` at build time to point the client at your server's WebSocket endpoint.
+You can also keep Vercel's project root as `client/` using `client/vercel.json`. In either setup, set `VITE_WS_URL` at build time to point the client at your server's WebSocket endpoint.
 
 ---
 

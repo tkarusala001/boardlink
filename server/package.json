@@ -8,6 +8,9 @@
     "start": "node index.js",
     "test": "npx --node-options=--experimental-vm-modules jest"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

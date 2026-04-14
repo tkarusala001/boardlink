@@ -3,9 +3,16 @@
   "version": "1.0.0",
   "description": "Accessible Screen Sharing for Low-Vision Students",
   "scripts": {
+    "build": "npm run build --prefix client",
+    "build:client": "npm run build --prefix client",
+    "start": "npm run start --prefix server",
+    "test": "npm run test --prefix server && npm run test --prefix client",
     "dev": "concurrently \"npm run dev-server\" \"npm run dev-client\"",
     "dev-server": "cd server && npm start",
     "dev-client": "cd client && npx vite"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
