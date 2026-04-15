@@ -250,20 +250,7 @@ export async function createServer() {
             }
             const target = room.students.get(payload.targetPeerId);
             if (target && target.readyState === WebSocket.OPEN) {
-<<<<<<< HEAD
               target.send(JSON.stringify({ type: 'OFFER', payload: payload.offer, peerId: payload.targetPeerId }));
-=======
-              // Wrap correctly and identify sender as teacher
-              target.send(JSON.stringify({ 
-                type: 'ICE_CANDIDATE', 
-                payload: payload.candidate, 
-                peerId: 'teacher' 
-              }));
-            }
-          } else {
-            if (room.teacher.readyState === WebSocket.OPEN) {
-              room.teacher.send(JSON.stringify({ type: 'ICE_CANDIDATE', payload, peerId }));
->>>>>>> 80970232 (errors)
             }
             break;
           }

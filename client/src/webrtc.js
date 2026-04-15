@@ -22,9 +22,6 @@ export default class WebRTCClient {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-<<<<<<< HEAD
-      ]
-=======
         { urls: 'stun:stun2.l.google.com:19302' }
       ],
       iceTransportPolicy: 'all',
@@ -51,7 +48,6 @@ export default class WebRTCClient {
         console.error(`[WebRTC] ${id} Connection FAILED. Check if ports are blocked.`);
         if (this.isTeacher) pc.restartIce();
       }
->>>>>>> 80970232 (errors)
     };
   }
 
