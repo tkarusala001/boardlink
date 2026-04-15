@@ -316,23 +316,56 @@ async function startStudentSession(code) {
   if (overlayStatus) { overlayStatus.style.display = 'block'; overlayMsg.textContent = 'Waiting for stream…'; }
 
   rtc.onStream = (stream) => {
-    if (overlayStatus) overlayStatus.style.display = 'none';
-    const video = document.createElement('video');
+    console.log(`[App] Received stream with ${stream.getTracks().length} tracks`);
+    
+    // Aggressively hide overlay by direct ID look-up
+    const overlay = document.getElementById('overlay-status');
+    if (overlay) {
+      overlay.style.setProperty('display', 'none', 'important');
+      console.log('[App] Overlay hidden aggressively');
+    }
+    
+    // Create and attach video (Chrome sometimes needs it in DOM to flow data)
+    let video = document.getElementById('webrtc-video-source');
+    if (!video) {
+      video = document.createElement('video');
+      video.id = 'webrtc-video-source';
+      video.style.display = 'none'; // Keep it hidden but part of DOM
+      document.body.appendChild(video);
+    }
+    
     video.srcObject = stream;
     video.muted = true;
     video.playsInline = true;
-    video.play().catch(err => console.error('[Student] video.play() failed:', err));
+    
+    video.onloadedmetadata = () => {
+      console.log(`[App] Video size: ${video.videoWidth}x${video.videoHeight}, State: ${video.readyState}`);
+    };
+
+    video.play()
+      .then(() => console.log('[App] Video playback logic started'))
+      .catch(err => console.error('[App] video.play() failed:', err));
 
     const thumbCanvas = document.createElement('canvas');
     let thumbCtx = null;
 
+    let framesLogged = 5;
+
     // Rendering loop
     const render = () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      // readyState 2+ means we have frames
+      if (video.readyState >= 2) { 
+        if (framesLogged > 0) {
+          console.log(`[App] Rendering frame. State: ${video.readyState}`);
+          framesLogged--;
+        }
+        
         // Init on first frame or dimension change
-        if (canvas.width !== video.videoWidth) {
+        if (canvas.width !== video.videoWidth && video.videoWidth > 0) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          console.log(`[App] Canvas set to ${canvas.width}x${canvas.height}`);
+          
           thumbCanvas.width = Math.floor(video.videoWidth / 10);
           thumbCanvas.height = Math.floor(video.videoHeight / 10);
           thumbCtx = thumbCanvas.getContext('2d');
@@ -346,7 +379,9 @@ async function startStudentSession(code) {
           );
         }
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        if (canvas.width > 0) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
 
         if (currentFilter !== 'none' && !processingInFlight) {
           processingInFlight = true;
