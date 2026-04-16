@@ -1215,12 +1215,30 @@ kbd {
   touch-action: none;
 }
 
+/* When annotating, the draw canvas captures pointer events */
 .capture-viewer__canvas-wrap.is-annotating .capture-viewer__draw {
   pointer-events: auto;
+  cursor: crosshair;
+}
+
+/* Per-tool cursors */
+.capture-viewer__canvas-wrap.is-annotating[data-tool="brush"] .capture-viewer__draw {
   cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'><path fill='%23ffcc00' stroke='%23000000' stroke-width='1.2' stroke-linejoin='round' d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/></svg>") 2 22, crosshair;
 }
 
-.capture-viewer__canvas-wrap.is-erasing .capture-viewer__draw {
+.capture-viewer__canvas-wrap.is-annotating[data-tool="highlight"] .capture-viewer__draw {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'><path fill='%23fff176' stroke='%23222' stroke-width='1.2' stroke-linejoin='round' d='M5 17l2 2 11-11-2-2L5 17z'/><path fill='%23bdbdbd' stroke='%23222' stroke-width='1.2' stroke-linejoin='round' d='M16 6l2 2 3-3-2-2-3 3z'/><path fill='%23ffcc00' stroke='%23222' stroke-width='1.2' stroke-linejoin='round' d='M3 19l2 2 2-2-2-2-2 2z'/></svg>") 3 21, crosshair;
+}
+
+.capture-viewer__canvas-wrap.is-annotating[data-tool="text"] .capture-viewer__draw {
+  cursor: text;
+}
+
+.capture-viewer__canvas-wrap.is-annotating[data-tool="note"] .capture-viewer__draw {
+  cursor: copy;
+}
+
+.capture-viewer__canvas-wrap.is-annotating[data-tool="eraser"] .capture-viewer__draw {
   cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'><path fill='%23ffffff' stroke='%23111' stroke-width='1.2' stroke-linejoin='round' d='M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 01-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0z'/></svg>") 12 12, crosshair;
 }
 
@@ -1379,6 +1397,297 @@ kbd {
   box-shadow: 0 0 0 2px var(--accent-primary), 0 0 14px var(--accent-glow) !important;
 }
 
+/* =========================================================
+   Sidebar close button (added to header)
+   ========================================================= */
+.capture-sidebar__close {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--glass-border-strong) !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition: background var(--dur-micro), color var(--dur-micro), border-color var(--dur-micro), transform var(--dur-micro);
+  flex-shrink: 0;
+}
+
+.capture-sidebar__close::before { display: none !important; }
+
+.capture-sidebar__close:hover {
+  background: rgba(231, 76, 60, 0.14) !important;
+  color: var(--accent-danger) !important;
+  border-color: rgba(231, 76, 60, 0.45) !important;
+  transform: rotate(90deg) !important;
+}
+
+.capture-sidebar__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring) !important;
+}
+
+/* =========================================================
+   Annotation tool selector (icon row)
+   ========================================================= */
+.cv-tool-group {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+}
+
+.cv-tool {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 34px !important;
+  height: 32px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 0 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition: background var(--dur-micro), color var(--dur-micro), border-color var(--dur-micro);
+}
+
+.cv-tool::before { display: none !important; }
+
+.cv-tool:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--text-primary) !important;
+  transform: none !important;
+}
+
+.cv-tool:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 0 0 4px var(--bg-primary) !important;
+}
+
+.cv-tool.is-active {
+  background: var(--accent-primary) !important;
+  color: #1a1300 !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* =========================================================
+   Opacity slider (highlight tool)
+   ========================================================= */
+.cv-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  animation: toolsIn 220ms var(--ease-spring);
+}
+
+.cv-opacity[hidden] { display: none; }
+
+.cv-opacity input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 6px;
+  background: linear-gradient(to right, rgba(255, 204, 0, 0.15), var(--accent-primary));
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.cv-opacity input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: pointer;
+  transition: transform var(--dur-micro);
+}
+
+.cv-opacity input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.cv-opacity input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: pointer;
+}
+
+.cv-opacity input[type='range']:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 0 0 4px var(--bg-primary);
+}
+
+.cv-opacity__value {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  min-width: 2.6em;
+  text-align: right;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+}
+
+/* =========================================================
+   Text tool — inline editable overlay
+   ========================================================= */
+.cv-text-input {
+  position: absolute;
+  background: rgba(20, 20, 28, 0.7);
+  border: 1.5px dashed currentColor;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  outline: none;
+  min-width: 140px;
+  z-index: 4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  caret-color: currentColor;
+}
+
+.cv-text-input:focus {
+  border-style: solid;
+  background: rgba(20, 20, 28, 0.85);
+}
+
+.cv-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 500;
+}
+
+/* =========================================================
+   Sticky notes
+   ========================================================= */
+.cv-notes {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.cv-note {
+  position: absolute;
+  width: 200px;
+  min-height: 130px;
+  padding: 28px 14px 14px;
+  background: linear-gradient(170deg, #fef3c7 0%, #fde68a 60%, #fcd34d 100%);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 8px 22px rgba(0, 0, 0, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
+  cursor: move;
+  transform-origin: center top;
+  transform: rotate(-1.5deg);
+  user-select: text;
+  animation: noteIn 280ms var(--ease-spring);
+  will-change: transform, left, top;
+}
+
+.cv-note:nth-child(odd) { transform: rotate(1.2deg); }
+.cv-note:nth-child(3n)  { transform: rotate(-2.2deg); }
+
+.cv-note.is-dragging {
+  cursor: grabbing;
+  transform: rotate(0deg) scale(1.04);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 4px 8px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+@keyframes noteIn {
+  from { opacity: 0; transform: scale(0.7) rotate(-1.5deg); }
+  to   { opacity: 1; transform: scale(1) rotate(-1.5deg); }
+}
+
+.cv-note__close {
+  position: absolute !important;
+  top: 5px !important;
+  right: 5px !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: rgba(0, 0, 0, 0.55) !important;
+  border: 1px solid transparent !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none !important;
+  font-family: inherit !important;
+  font-size: 0 !important;
+  transition: background var(--dur-micro), color var(--dur-micro), border-color var(--dur-micro);
+}
+
+.cv-note__close::before { display: none !important; }
+
+.cv-note__close:hover {
+  background: rgba(231, 76, 60, 0.18) !important;
+  color: var(--accent-danger) !important;
+  border-color: rgba(231, 76, 60, 0.4) !important;
+  transform: none !important;
+}
+
+.cv-note__text {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: #1a1300;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  cursor: text;
+  padding: 0;
+}
+
+.cv-note__text::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+  font-style: italic;
+}
+
 @media (max-width: 720px) {
   .capture-sidebar { width: 100vw; }
   .capture-viewer__stage { padding: 0.75rem; }
@@ -1397,6 +1706,8 @@ kbd {
   .cv-btn span { display: none; }
   .cv-btn { padding: 0.55rem 0.75rem !important; }
   .cv-btn--small span { display: inline; }
+  .cv-opacity input[type='range'] { width: 80px; }
+  .cv-note { width: 170px; }
 }
 
 /* =========================================================
