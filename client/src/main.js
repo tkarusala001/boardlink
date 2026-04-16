@@ -37,11 +37,8 @@ let currentRoomCode = null;
 let cursorGlow = null;
 let captureGallery = null;
 let currentPalette = 'default';
-let currentFilter = 'none';
-let processingWorker = null;
 let focusWorker = null;
 let focusPane = null;
-let processingInFlight = false;
 
 const srAnnouncer = document.getElementById('sr-announcer');
 function announce(msg) {
@@ -49,8 +46,6 @@ function announce(msg) {
   requestAnimationFrame(() => { srAnnouncer.textContent = msg; }); // re-trigger on dupes
 }
 
-// Ordered filter cycle for Shift+F shortcut
-const FILTER_CYCLE = ['none', 'light', 'medium', 'heavy'];
 
 function showView(viewName) {
   Object.values(views).forEach(v => v.style.display = 'none');
@@ -201,6 +196,73 @@ async function initSignaling() {
   }
 }
 
+function setupPaletteDropdown(onChange) {
+  const root    = document.getElementById('palette-dropdown');
+  const trigger = document.getElementById('palette-trigger');
+  const list    = document.getElementById('palette-options');
+  const current = document.getElementById('palette-current');
+  if (!root || !trigger || !list || !current) return;
+
+  const options = Array.from(list.querySelectorAll('[role="option"]'));
+
+  const closeList = () => {
+    list.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    root.classList.remove('is-open');
+  };
+
+  const openList = () => {
+    list.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    root.classList.add('is-open');
+    const active = options.find(o => o.getAttribute('aria-selected') === 'true') || options[0];
+    active?.focus();
+  };
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    list.hidden ? openList() : closeList();
+  });
+
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openList();
+    }
+  });
+
+  options.forEach((opt, i) => {
+    opt.addEventListener('click', () => {
+      options.forEach(o => o.setAttribute('aria-selected', 'false'));
+      opt.setAttribute('aria-selected', 'true');
+      current.textContent = opt.textContent;
+      onChange?.(opt.dataset.value, opt.textContent);
+      closeList();
+      trigger.focus();
+    });
+    opt.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (options[i + 1] || options[0]).focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (options[i - 1] || options[options.length - 1]).focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        opt.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeList();
+        trigger.focus();
+      }
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!root.contains(e.target)) closeList();
+  });
+}
+
 function resolveSignalingUrl() {
   const explicitUrl = (import.meta.env.VITE_WS_URL || '').trim();
   if (explicitUrl) return explicitUrl;
@@ -291,22 +353,11 @@ async function startStudentSession(code) {
   
   captureGallery = new CaptureGallery(canvas);
 
-  processingWorker = new Worker(new URL('./workers/processing-worker.js', import.meta.url), { type: 'module' });
-  
   focusWorker = new Worker(new URL('./workers/focus-worker.js', import.meta.url), { type: 'module' });
   focusWorker.onmessage = (e) => {
     if (e.data.type === 'FOCUS_RESULT') {
       const { cx, cy, confidence } = e.data.payload;
       if (focusPane) focusPane.setTarget(cx, cy, confidence);
-    }
-  };
-
-  processingWorker.onmessage = (e) => {
-    if (e.data.type === 'FRAME_PROCESSED') {
-      processingInFlight = false;
-      if (currentFilter !== 'none') {
-        ctx.putImageData(e.data.payload.imageData, 0, 0);
-      }
     }
   };
 
@@ -383,16 +434,6 @@ async function startStudentSession(code) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         }
 
-        if (currentFilter !== 'none' && !processingInFlight) {
-          processingInFlight = true;
-          createImageBitmap(video).then(bitmap => {
-            processingWorker.postMessage({
-              type: 'PROCESS_FRAME_BITMAP',
-              payload: { bitmap, filterLevel: currentFilter, palette: currentPalette }
-            }, [bitmap]);
-          });
-        }
-
         // Send every other frame to focus worker
         if (Math.random() > 0.5 && thumbCtx) {
           thumbCtx.drawImage(video, 0, 0, thumbCanvas.width, thumbCanvas.height);
@@ -416,17 +457,38 @@ async function startStudentSession(code) {
 
   await rtc.start(code);
 
-  document.getElementById('palette-selector').onchange = (e) => {
-    currentPalette = e.target.value;
-  };
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-    };
+  setupPaletteDropdown((value, label) => {
+    currentPalette = value;
+    announce(`Palette: ${label}`);
   });
+
+  const toggleCapturesBtn = document.getElementById('btn-toggle-captures');
+  if (toggleCapturesBtn) {
+    const syncBtn = (open) => {
+      toggleCapturesBtn.setAttribute('aria-pressed', String(open));
+      toggleCapturesBtn.classList.toggle('is-active', open);
+    };
+    captureGallery.onSidebarToggle = syncBtn;
+    toggleCapturesBtn.onclick = () => {
+      if (!captureGallery) return;
+      const open = captureGallery.toggleSidebar();
+      syncBtn(open);
+      announce(open ? 'Captures sidebar opened.' : 'Captures sidebar closed.');
+    };
+  }
+
+  const leaveBtn = document.getElementById('btn-leave-session');
+  if (leaveBtn) {
+    leaveBtn.onclick = () => {
+      sessionStorage.removeItem('bl_session_id');
+      sessionStorage.removeItem('bl_room_code');
+      if (captureGallery) captureGallery.destroy();
+      if (rtc) rtc.close();
+      if (signaling) signaling.close();
+      announce('You have left the session.');
+      location.reload();
+    };
+  }
 
   const settingsPanel = document.getElementById('settings-panel');
   const settingsBtn = document.getElementById('btn-student-settings');
@@ -475,14 +537,5 @@ async function startStudentSession(code) {
       announce('Frame captured.');
     }
 
-    if (e.shiftKey && e.key.toUpperCase() === 'F') {
-      e.preventDefault();
-      const idx = FILTER_CYCLE.indexOf(currentFilter);
-      currentFilter = FILTER_CYCLE[(idx + 1) % FILTER_CYCLE.length];
-      document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === currentFilter);
-      });
-      announce(`Filter: ${currentFilter}`);
-    }
   });
 }

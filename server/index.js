@@ -86,15 +86,32 @@ export async function createServer() {
     }
   });
 
+  // Room lifetime: 30 minutes after creation (absolute TTL)
+  const ROOM_TTL_MS = 30 * 60 * 1000;
+
   // GC interval
   const gcInterval = setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms) {
       const isAbandoned = (!room.teacher || room.teacher.readyState !== WebSocket.OPEN) && room.students.size === 0;
       const isStale     = (now - (room.lastActivity || now)) > 60_000;
-      if (isAbandoned || isStale) {
+      const isExpired   = (now - (room.createdAt || now)) > ROOM_TTL_MS;
+      if (isAbandoned || isStale || isExpired) {
+        if (isExpired) {
+          // Notify participants the room's 30-minute window has ended
+          if (room.teacher && room.teacher.readyState === WebSocket.OPEN) {
+            room.teacher.send(JSON.stringify({ type: 'ERROR', message: 'Room expired after 30 minutes. Please start a new session.' }));
+            try { room.teacher.close(); } catch {}
+          }
+          for (const studentWs of room.students.values()) {
+            if (studentWs.readyState === WebSocket.OPEN) {
+              studentWs.send(JSON.stringify({ type: 'ERROR', message: 'This classroom expired. Ask your teacher for a new code.' }));
+              try { studentWs.close(); } catch {}
+            }
+          }
+        }
         rooms.delete(code);
-        console.log(`[GC] removed room ${code}`);
+        console.log(`[GC] removed room ${code}${isExpired ? ' (expired 30m)' : ''}`);
       }
     }
     // Clean up expired rate limit entries
@@ -143,20 +160,26 @@ export async function createServer() {
 
           case 'CREATE_ROOM': {
             const newCode = generateRoomCode();
-            rooms.set(newCode, { teacher: ws, students: new Map(), lastActivity: Date.now() });
+            const createdAt = Date.now();
+            rooms.set(newCode, { teacher: ws, students: new Map(), lastActivity: createdAt, createdAt });
             currentRoom = newCode;
             isTeacher   = true;
-            ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode: newCode }));
+            ws.send(JSON.stringify({
+              type: 'ROOM_CREATED',
+              roomCode: newCode,
+              expiresAt: createdAt + ROOM_TTL_MS
+            }));
             console.log(`Room created: ${newCode}`);
             break;
           }
 
           case 'JOIN_ROOM': {
-            // IP rate limit
+            // IP rate limit — loose bucket (100 failed attempts / 15 min) so
+            // students fat-fingering the code a few times aren't locked out.
             const now = Date.now();
             let record = rateLimitCache.get(ip) || { count: 0, resetTime: now + 15 * 60 * 1000 };
             if (now > record.resetTime) record = { count: 0, resetTime: now + 15 * 60 * 1000 };
-            if (record.count >= 5) {
+            if (record.count >= 100) {
               ws.send(JSON.stringify({ type: 'ERROR', message: 'Too many failed attempts. Try again later.' }));
               return;
             }

@@ -39,7 +39,12 @@ export default class CaptureGallery {
     this.sourceCanvas = sourceCanvas;
     this.captures = [];
     this.activeViewer = null;
+    this.onSidebarToggle = null; // (isOpen: boolean) => void
     this._buildSidebar();
+  }
+
+  _emitSidebarState(isOpen) {
+    try { this.onSidebarToggle?.(isOpen); } catch (err) { console.error(err); }
   }
 
   _buildSidebar() {
@@ -139,6 +144,7 @@ export default class CaptureGallery {
   _showSidebar() {
     this.sidebar.hidden = false;
     requestAnimationFrame(() => this.sidebar.classList.add('is-open'));
+    this._emitSidebarState(true);
   }
 
   _hideSidebar() {
@@ -146,6 +152,15 @@ export default class CaptureGallery {
     setTimeout(() => {
       if (!this.sidebar.classList.contains('is-open')) this.sidebar.hidden = true;
     }, 380);
+    this._emitSidebarState(false);
+  }
+
+  /** Toggle the sidebar — returns `true` when now open, `false` when now closed. */
+  toggleSidebar() {
+    const isOpen = !this.sidebar.hidden && this.sidebar.classList.contains('is-open');
+    if (isOpen) { this._hideSidebar(); return false; }
+    this._showSidebar();
+    return true;
   }
 
   open(id) {

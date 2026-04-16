@@ -244,16 +244,17 @@ describe('Server integration', () => {
   });
 
   // --- Rate limiting ---
-  test('rate limiting after 5 failed join attempts', async () => {
+  test('rate limiting kicks in after 100 failed join attempts', async () => {
     const ws = await connectWs();
 
-    // 5 failed attempts
-    for (let i = 0; i < 5; i++) {
+    // 100 failed attempts (loose bucket — students can fat-finger freely)
+    for (let i = 0; i < 100; i++) {
       const reply = await sendAndWait(ws, { v: 1, type: 'JOIN_ROOM', roomCode: 'ZZ99' });
       expect(reply.type).toBe('ERROR');
+      expect(reply.message).not.toMatch(/too many/i);
     }
 
-    // 6th should be rate limited
+    // 101st should be rate limited
     const reply = await sendAndWait(ws, { v: 1, type: 'JOIN_ROOM', roomCode: 'ZZ99' });
     expect(reply.type).toBe('ERROR');
     expect(reply.message).toMatch(/too many/i);

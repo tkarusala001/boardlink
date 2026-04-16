@@ -90,7 +90,9 @@
             <span class="dot"></span>
             LIVE
           </div>
-          <button id="btn-student-settings" class="secondary" style="padding: 0.45rem 1rem; font-size: 0.85rem; min-height: 36px; min-width: auto;" aria-label="Open display settings" aria-controls="settings-panel">Settings</button>
+          <button id="btn-toggle-captures" class="secondary stream-ctrl-btn" aria-label="Toggle screenshots sidebar" aria-pressed="false">Captures</button>
+          <button id="btn-student-settings" class="secondary stream-ctrl-btn" aria-label="Open display settings" aria-controls="settings-panel">Settings</button>
+          <button id="btn-leave-session" class="secondary stream-ctrl-btn button-danger" aria-label="Leave this session">Leave</button>
         </div>
 
         <div id="overlay-status" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; text-align: center;">
@@ -100,26 +102,27 @@
 
       <!-- Settings Panel (Collapsible) -->
       <div id="settings-panel" style="display: grid;">
-        <div>
-          <label class="settings-label">Bold-Ink Filter</label>
-          <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
-            <button class="filter-btn active" data-filter="none">Off</button>
-            <button class="filter-btn" data-filter="light">Light</button>
-            <button class="filter-btn" data-filter="medium">Mid</button>
-            <button class="filter-btn" data-filter="heavy">Heavy</button>
-          </div>
-        </div>
-
-        <div>
-          <label class="settings-label" for="palette-selector">Color Palette</label>
-          <select id="palette-selector">
-            <option value="default">Default</option>
-            <option value="high-contrast-dark">High Contrast Dark</option>
-            <option value="high-contrast-warm">High Contrast Warm</option>
-            <option value="cataracts">Cataracts-Optimized</option>
-            <option value="tritanopia">Tritanopia Support</option>
-            <option value="invert">Inverted</option>
-          </select>
+        <div class="palette-dropdown" id="palette-dropdown">
+          <label class="settings-label" id="palette-label">Color Palette</label>
+          <button type="button" class="palette-trigger" id="palette-trigger"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  aria-labelledby="palette-label palette-current">
+            <span id="palette-current">Default</span>
+            <svg class="palette-caret" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <ul class="palette-options" id="palette-options" role="listbox"
+              aria-labelledby="palette-label" hidden>
+            <li role="option" data-value="default" aria-selected="true" tabindex="-1">Default</li>
+            <li role="option" data-value="high-contrast-dark" tabindex="-1">High Contrast Dark</li>
+            <li role="option" data-value="high-contrast-warm" tabindex="-1">High Contrast Warm</li>
+            <li role="option" data-value="cataracts" tabindex="-1">Cataracts-Optimized</li>
+            <li role="option" data-value="tritanopia" tabindex="-1">Tritanopia Support</li>
+            <li role="option" data-value="invert" tabindex="-1">Inverted</li>
+          </ul>
         </div>
 
         <div class="settings-row">
@@ -130,7 +133,7 @@
 
       <!-- Keyboard shortcuts legend -->
       <p class="shortcut-hint">
-        <kbd>Space</kbd> Freeze <span class="sep">·</span> <kbd>Shift</kbd>+<kbd>F</kbd> Cycle filter
+        <kbd>Space</kbd> Freeze
       </p>
     </div>
 
