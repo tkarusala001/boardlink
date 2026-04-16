@@ -1,7 +1,7 @@
 import SignalingClient from './signaling.js';
 import WebRTCClient from './webrtc.js';
 import CursorGlow from './ui/CursorGlow.js';
-import PipHold from './ui/PipHold.js';
+import CaptureGallery from './ui/CaptureGallery.js';
 import FocusPane from './ui/FocusPane.js';
 
 // DOM Elements
@@ -35,7 +35,7 @@ let signaling = null;
 let rtc = null;
 let currentRoomCode = null;
 let cursorGlow = null;
-let pipHold = null;
+let captureGallery = null;
 let currentPalette = 'default';
 let currentFilter = 'none';
 let processingWorker = null;
@@ -289,7 +289,7 @@ async function startStudentSession(code) {
   cursorGlow = new CursorGlow(viewport);
   cursorGlow.applySettings();
   
-  pipHold = new PipHold(canvas, viewport);
+  captureGallery = new CaptureGallery(canvas);
 
   processingWorker = new Worker(new URL('./workers/processing-worker.js', import.meta.url), { type: 'module' });
   
@@ -437,7 +437,8 @@ async function startStudentSession(code) {
   };
 
   document.getElementById('btn-freeze-frame').onclick = () => {
-    if (pipHold) pipHold.capture();
+    if (captureGallery) captureGallery.capture();
+    announce('Frame captured.');
   };
 
   document.getElementById('btn-toggle-focus').onclick = () => {
@@ -470,8 +471,8 @@ async function startStudentSession(code) {
 
     if (e.code === 'Space') {
       e.preventDefault();
-      if (pipHold) pipHold.capture();
-      announce('Frame frozen.');
+      if (captureGallery) captureGallery.capture();
+      announce('Frame captured.');
     }
 
     if (e.shiftKey && e.key.toUpperCase() === 'F') {
