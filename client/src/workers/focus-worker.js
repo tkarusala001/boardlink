@@ -22,9 +22,12 @@ self.onmessage = (e) => {
     case 'INIT':
       width = payload.width;
       height = payload.height;
-      
-      // Initialize heatmaps at 1/10th scale for performance
-      const mapSize = (width / 10) * (height / 10);
+
+      // Initialize heatmaps at 1/10th scale for performance.
+      // Use Math.floor so non-divisible-by-10 resolutions (e.g. 1366×768)
+      // produce integer dimensions — float dimensions cause fractional array
+      // indices that silently corrupt every heatmap read/write.
+      const mapSize = Math.floor(width / 10) * Math.floor(height / 10);
       cursorMap = new Float32Array(mapSize);
       diffMap = new Float32Array(mapSize);
       attnMap = new Float32Array(mapSize);
@@ -47,8 +50,8 @@ self.onmessage = (e) => {
 
 function updateCursorHeatmap(nx, ny) {
   if (!cursorMap) return;
-  const mapW = width / 10;
-  const mapH = height / 10;
+  const mapW = Math.floor(width / 10);
+  const mapH = Math.floor(height / 10);
   const mx = Math.floor(nx * mapW);
   const my = Math.floor(ny * mapH);
   
@@ -77,8 +80,8 @@ function updateTemporalMap(imageData) {
     return;
   }
 
-  const mapW = width / 10;
-  const mapH = height / 10;
+  const mapW = Math.floor(width / 10);
+  const mapH = Math.floor(height / 10);
   const data = imageData.data;
   
   // Pixel-wise difference at 1/10th resolution
@@ -103,8 +106,8 @@ function fuseSignals() {
 }
 
 function extractBestRegion() {
-  const mapW = width / 10;
-  const mapH = height / 10;
+  const mapW = Math.floor(width / 10);
+  const mapH = Math.floor(height / 10);
   let maxScore = -1;
   let bestX = 0, bestY = 0;
 

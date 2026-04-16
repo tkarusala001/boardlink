@@ -16,6 +16,7 @@ export default class WebRTCClient {
     this.onStream = null;
     this.dataChannel = null;
     this.onData = null;
+    this.localPeerId = null;
 
     // ICE configuration — accept custom config or use defaults
     this.config = iceConfig || {

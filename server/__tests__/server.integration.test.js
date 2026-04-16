@@ -26,12 +26,22 @@ describe('Server integration', () => {
     });
   });
 
-  afterEach((done) => {
+  afterEach(async () => {
     const { gcInterval, wss } = server._boardlink;
     clearInterval(gcInterval);
-    // Close all WebSocket clients
-    wss.clients.forEach((ws) => ws.terminate());
-    server.close(done);
+    // Terminate all live clients and wait for their close events to drain
+    // before closing the server. Without this drain, the server-side 'close'
+    // handlers (which log) fire after Jest marks the test done, causing
+    // "Cannot log after tests are done" and a non-zero exit code.
+    const drainPromises = [];
+    wss.clients.forEach((ws) => {
+      if (ws.readyState !== 3 /* CLOSED */) {
+        drainPromises.push(new Promise((r) => ws.once('close', r)));
+      }
+      ws.terminate();
+    });
+    await Promise.all(drainPromises);
+    await new Promise((r) => server.close(r));
   });
 
   function connectWs() {
