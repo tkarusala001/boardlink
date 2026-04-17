@@ -262,7 +262,6 @@ Fixes:
 | `Cannot reach signaling server.` | Server not running or wrong URL | Start server and verify client points to `ws://localhost:8082` |
 | `Protocol version mismatch` | Client bundle older than server protocol | Refresh/rebuild client and restart dev session |
 | `This code is invalid or has expired.` | Wrong room code or room garbage-collected | Ask teacher for current code and rejoin |
-| `Too many failed attempts. Try again later.` | Join brute-force rate limit triggered | Wait for reset window (15 min) |
 | Student stream not appearing | Offer/answer/ICE ordering issue or join race | Reconnect student, verify peer-specific signaling messages |
 | Filter feels delayed under load | Worker already processing prior frame | Reduce load, keep `processingInFlight` guard, lower frame rate if needed |
 

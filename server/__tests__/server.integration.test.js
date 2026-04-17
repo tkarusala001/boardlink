@@ -6,13 +6,8 @@ import http from 'http';
 let createServer;
 
 beforeAll(async () => {
-  process.env.MAX_FAILED_JOIN_ATTEMPTS = '100';
   const mod = await import('../index.js');
   createServer = mod.createServer;
-});
-
-afterAll(() => {
-  delete process.env.MAX_FAILED_JOIN_ATTEMPTS;
 });
 
 describe('Server integration', () => {
@@ -248,21 +243,15 @@ describe('Server integration', () => {
     student.close();
   });
 
-  // --- Rate limiting ---
-  test('rate limiting kicks in after 100 failed join attempts', async () => {
+  // --- Invalid join retry behavior ---
+  test('repeated invalid joins keep returning invalid/expired without throttle message', async () => {
     const ws = await connectWs();
 
-    // 100 failed attempts (loose bucket — students can fat-finger freely)
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 120; i++) {
       const reply = await sendAndWait(ws, { v: 1, type: 'JOIN_ROOM', roomCode: 'ZZ99' });
       expect(reply.type).toBe('ERROR');
-      expect(reply.message).not.toMatch(/too many/i);
+      expect(reply.message).toMatch(/invalid|expired/i);
     }
-
-    // 101st should be rate limited
-    const reply = await sendAndWait(ws, { v: 1, type: 'JOIN_ROOM', roomCode: 'ZZ99' });
-    expect(reply.type).toBe('ERROR');
-    expect(reply.message).toMatch(/too many/i);
 
     ws.close();
   });
