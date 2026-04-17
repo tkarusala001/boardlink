@@ -6,8 +6,13 @@ import http from 'http';
 let createServer;
 
 beforeAll(async () => {
+  process.env.MAX_FAILED_JOIN_ATTEMPTS = '100';
   const mod = await import('../index.js');
   createServer = mod.createServer;
+});
+
+afterAll(() => {
+  delete process.env.MAX_FAILED_JOIN_ATTEMPTS;
 });
 
 describe('Server integration', () => {

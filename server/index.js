@@ -14,6 +14,10 @@ const generatePeerId   = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 
 
 // Protocol version
 const PROTOCOL_VERSION = 1;
+const JOIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const parsedJoinRateLimit = Number.parseInt(process.env.MAX_FAILED_JOIN_ATTEMPTS || '0', 10);
+// <= 0 disables failed-join rate limiting.
+const MAX_FAILED_JOIN_ATTEMPTS = Number.isFinite(parsedJoinRateLimit) ? parsedJoinRateLimit : 0;
 
 // Zod Schema for incoming wrapper
 const MessageSchema = z.object({
@@ -174,20 +178,22 @@ export async function createServer() {
           }
 
           case 'JOIN_ROOM': {
-            // IP rate limit — loose bucket (100 failed attempts / 15 min) so
-            // students fat-fingering the code a few times aren't locked out.
+            // Optional IP rate limit. Disabled by default unless
+            // MAX_FAILED_JOIN_ATTEMPTS is set to a positive integer.
             const now = Date.now();
-            let record = rateLimitCache.get(ip) || { count: 0, resetTime: now + 15 * 60 * 1000 };
-            if (now > record.resetTime) record = { count: 0, resetTime: now + 15 * 60 * 1000 };
-            if (record.count >= 100) {
+            let record = rateLimitCache.get(ip) || { count: 0, resetTime: now + JOIN_RATE_LIMIT_WINDOW_MS };
+            if (now > record.resetTime) record = { count: 0, resetTime: now + JOIN_RATE_LIMIT_WINDOW_MS };
+            if (MAX_FAILED_JOIN_ATTEMPTS > 0 && record.count >= MAX_FAILED_JOIN_ATTEMPTS) {
               ws.send(JSON.stringify({ type: 'ERROR', message: 'Too many failed attempts. Try again later.' }));
               return;
             }
 
             const codeCheck = RoomCodeSchema.safeParse(roomCode);
             if (!codeCheck.success || !rooms.has(roomCode)) {
-              record.count += 1;
-              rateLimitCache.set(ip, record);
+              if (MAX_FAILED_JOIN_ATTEMPTS > 0) {
+                record.count += 1;
+                rateLimitCache.set(ip, record);
+              }
               ws.send(JSON.stringify({ type: 'ERROR', message: 'This code is invalid or has expired.' }));
               return;
             }
