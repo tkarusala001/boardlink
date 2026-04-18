@@ -10,6 +10,8 @@ export default class FocusPane {
     this.vX = 0; this.vY = 0;
     this.targetX = 0.5; this.targetY = 0.5;
 
+    // hookes law spring -- stiffness = how fast it gets there, damping = how fast it stops oscillating
+    // 120/14 was tuned by feel, too low damping and it overshoots, too high and it feels sluggish
     this.stiffness = 120;
     this.damping = 14;
     this.zoom = 2.0;
@@ -43,6 +45,7 @@ export default class FocusPane {
     this.x += this.vX * dt;
     this.y += this.vY * dt;
 
+    // clamp so the spring cant overshoot past the video frame edges
     this.x = Math.max(0, Math.min(1, this.x));
     this.y = Math.max(0, Math.min(1, this.y));
 

@@ -115,6 +115,7 @@ export default class WebRTCClient {
     if (!this.isTeacher) return;
     
     if (!this.stream) {
+      // student joined before teacher clicked "allow" on the screen share dialog -- queue them
       console.log(`[WebRTC] Stream not ready. Queuing student: ${studentId}`);
       this.pendingStudents.push(studentId);
       return;
@@ -126,6 +127,8 @@ export default class WebRTCClient {
     
     this.stream.getTracks().forEach(track => pc.addTrack(track, this.stream));
     
+    // ordered:false, maxRetransmits:0 = fire and forget -- cursor at 60fps doesnt need reliability, it needs speed
+    // using reliable delivery here would cause cursor lag bc old packets queue up behind dropped ones
     const dataChannel = pc.createDataChannel('cursorUpdates', { ordered: false, maxRetransmits: 0 });
     
     pc.onicecandidate = (event) => {
@@ -155,6 +158,8 @@ export default class WebRTCClient {
       await this.pc.setRemoteDescription(offer);
       console.log('[WebRTC] Remote Description set (Offer)');
       
+      // flush queued candidates -- they can arrive before setRemoteDescription is done
+      // calling addIceCandidate without a remote description set throws and kills the connection
       while (this.candidateQueue.length > 0) {
         const candidate = this.candidateQueue.shift();
         await this.pc.addIceCandidate(candidate);

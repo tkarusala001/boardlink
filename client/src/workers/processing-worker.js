@@ -16,8 +16,10 @@ let offscreenCtx = null;
 function processFrameBitmap({ bitmap, filterLevel, palette }) {
   if (!offscreenCanvas) {
     offscreenCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    // willReadFrequently tells the browser to keep this in CPU memory not GPU -- getImageData is way faster
     offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
   } else if (offscreenCanvas.width !== bitmap.width || offscreenCanvas.height !== bitmap.height) {
+    // teacher resized their window mid session
     offscreenCanvas.width = bitmap.width;
     offscreenCanvas.height = bitmap.height;
   }
@@ -52,9 +54,12 @@ function applyBoldInk(imageData, level) {
     for (let x = radius; x < width - radius; x++) {
       const idx = (y * width + x) * 4;
       const r = data[idx], g = data[idx+1], b = data[idx+2];
+      // standard human perception weighting -- green contributes most bc our eyes are most sensitive to it
       const lum = (0.299 * r + 0.587 * g + 0.114 * b);
 
       if (lum < 80) {
+        // dark pixel (text, pen marks) -- copy it outward to neighbors within radius
+        // this is morphological dilation, makes thin text fatter and easier to read
         for (let dy = -radius; dy <= radius; dy++) {
           for (let dx = -radius; dx <= radius; dx++) {
             const nIdx = ((y + dy) * width + (x + dx)) * 4;

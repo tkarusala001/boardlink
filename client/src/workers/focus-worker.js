@@ -7,13 +7,15 @@ let cursorMap = null;
 let diffMap = null;
 let attnMap = null;
 
+// cursor matters most bc it's intentional, motion second, density least
 const weights = {
   cursor: 0.45,
   temporal: 0.35,
   density: 0.20
 };
 
-const decayPerFrame = 0.95; // Rolling heatmap decay
+// each frame old heat fades -- so if teacher stops moving the zoom doesnt stay stuck
+const decayPerFrame = 0.95;
 
 self.onmessage = (e) => {
   const { type, payload } = e.data;
@@ -23,10 +25,9 @@ self.onmessage = (e) => {
       width = payload.width;
       height = payload.height;
 
-      // Initialize heatmaps at 1/10th scale for performance.
-      // Use Math.floor so non-divisible-by-10 resolutions (e.g. 1366×768)
-      // produce integer dimensions — float dimensions cause fractional array
-      // indices that silently corrupt every heatmap read/write.
+      // 1/10th scale -- full 1080p would be 2M pixel ops per frame, this is 20k
+      // Math.floor is not optional -- 1366/10 = 136.6 and float array indices
+      // silently corrupt the whole heatmap, took a while to track that bug down
       const mapSize = Math.floor(width / 10) * Math.floor(height / 10);
       cursorMap = new Float32Array(mapSize);
       diffMap = new Float32Array(mapSize);
@@ -59,7 +60,8 @@ function updateCursorHeatmap(nx, ny) {
     cursorMap[i] *= decayPerFrame;
   }
 
-  // gaussian pulse at cursor
+  // spread heat outward from cursor -- closer pixels get more weight, falls off linearly
+  // if you just marked the exact cursor pixel the focus would jitter constantly
   const radius = 5;
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -92,6 +94,7 @@ function updateTemporalMap(imageData) {
       const pr = previousFrame[originalIdx], pg = previousFrame[originalIdx+1], pb = previousFrame[originalIdx+2];
       
       const diff = (Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb)) / 3;
+      // threshold at 15 filters out h264 compression noise -- below that its just codec artifacts not real motion
       diffMap[y * mapW + x] = diff > 15 ? (diff / 255) : 0;
     }
   }

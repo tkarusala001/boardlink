@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 // Config & Generators
+// no 0, 1, O or I -- they look identical on a projected screen, especially for low vision users
 const generateRoomCode = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 4);
 const generatePeerId   = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 
@@ -31,6 +32,20 @@ const RoomCodeSchema = z.string().regex(/^[2-9A-Z]{4}$/);
 export async function createServer() {
   const rooms = new Map();          // roomCode -> { teacher, students, lastActivity }
   const graceSessions = new Map();   // sessionId -> { roomCode, peerId, timer }
+
+  function sendError(ws, message, meta = {}) {
+    console.error('[Signaling] ERROR:', message, meta);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ERROR', message }));
+    }
+  }
+
+  function sendObsoleteClient(ws, message, meta = {}) {
+    console.error('[Signaling] SYS_OBSOLETE_CLIENT:', message, meta);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'SYS_OBSOLETE_CLIENT', message }));
+    }
+  }
 
   // Resolve client dist path (built SPA)
   const clientDistPath = resolve(__dirname, '..', 'client', 'dist');
@@ -89,22 +104,24 @@ export async function createServer() {
   const ROOM_TTL_MS = 30 * 60 * 1000;
 
   // GC interval
+  // runs every 60s -- cleans up rooms that are abandoned, stale, or hit the 30min hard limit
   const gcInterval = setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms) {
-      const isAbandoned = (!room.teacher || room.teacher.readyState !== WebSocket.OPEN) && room.students.size === 0;
-      const isStale     = (now - (room.lastActivity || now)) > 60_000;
+      const teacherAlive = room.teacher && room.teacher.readyState === WebSocket.OPEN;
+      const isAbandoned = !teacherAlive && room.students.size === 0;
+      const isStale     = !teacherAlive && (now - (room.lastActivity || now)) > 60_000;
       const isExpired   = (now - (room.createdAt || now)) > ROOM_TTL_MS;
       if (isAbandoned || isStale || isExpired) {
         if (isExpired) {
           // Notify participants the room's 30-minute window has ended
           if (room.teacher && room.teacher.readyState === WebSocket.OPEN) {
-            room.teacher.send(JSON.stringify({ type: 'ERROR', message: 'Room expired after 30 minutes. Please start a new session.' }));
+            sendError(room.teacher, 'Room expired after 30 minutes. Please start a new session.', { roomCode: code, role: 'teacher' });
             try { room.teacher.close(); } catch {}
           }
           for (const studentWs of room.students.values()) {
             if (studentWs.readyState === WebSocket.OPEN) {
-              studentWs.send(JSON.stringify({ type: 'ERROR', message: 'This classroom expired. Ask your teacher for a new code.' }));
+              sendError(studentWs, 'This classroom expired. Ask your teacher for a new code.', { roomCode: code, role: 'student' });
               try { studentWs.close(); } catch {}
             }
           }
@@ -115,7 +132,7 @@ export async function createServer() {
     }
   }, 60_000);
 
-  // Don't keep the process alive just for GC
+  // without unref the GC timer alone would keep the node process running forever even if everything else closed
   gcInterval.unref?.();
 
   wss.on('error', (err) => {
@@ -141,7 +158,7 @@ export async function createServer() {
 
         // Version gate
         if (v !== undefined && v < PROTOCOL_VERSION) {
-          ws.send(JSON.stringify({ type: 'SYS_OBSOLETE_CLIENT', message: 'Protocol version mismatch' }));
+          sendObsoleteClient(ws, 'Protocol version mismatch', { receivedVersion: v, expectedVersion: PROTOCOL_VERSION });
           ws.close();
           return;
         }
@@ -168,17 +185,18 @@ export async function createServer() {
           case 'JOIN_ROOM': {
             const codeCheck = RoomCodeSchema.safeParse(roomCode);
             if (!codeCheck.success || !rooms.has(roomCode)) {
-              ws.send(JSON.stringify({ type: 'ERROR', message: 'This code is invalid or has expired.' }));
+              sendError(ws, 'This code is invalid or has expired.', { roomCode, codeFormatValid: codeCheck.success, roomExists: rooms.has(roomCode) });
               return;
             }
 
             const room = rooms.get(roomCode);
 
+            // collision is astronomically unlikely with 10 chars but handle it anyway
             let attempts = 0;
             do { peerId = generatePeerId(); attempts++; }
             while (room.students.has(peerId) && attempts < 10);
             if (room.students.has(peerId)) {
-              ws.send(JSON.stringify({ type: 'ERROR', message: 'Unable to allocate peer session. Please try again.' }));
+              sendError(ws, 'Unable to allocate peer session. Please try again.', { roomCode, attempts });
               break;
             }
 
@@ -206,7 +224,7 @@ export async function createServer() {
           case 'REJOIN_ROOM': {
             const sessionId = payload?.sessionId;
             if (!sessionId || !graceSessions.has(sessionId)) {
-              ws.send(JSON.stringify({ type: 'ERROR', message: 'Session expired. Please re-enter the room code.' }));
+              sendError(ws, 'Session expired. Please re-enter the room code.', { roomCode, sessionId });
               break;
             }
 
@@ -215,7 +233,7 @@ export async function createServer() {
             graceSessions.delete(sessionId);
 
             if (!rooms.has(grace.roomCode)) {
-              ws.send(JSON.stringify({ type: 'ERROR', message: 'The room has closed. Ask your teacher for a new code.' }));
+              sendError(ws, 'The room has closed. Ask your teacher for a new code.', { roomCode: grace.roomCode, sessionId });
               break;
             }
 
@@ -243,12 +261,19 @@ export async function createServer() {
           }
 
           case 'OFFER': {
-            if (!isTeacher || !currentRoom || !rooms.has(currentRoom)) break;
+            if (!isTeacher || !currentRoom || !rooms.has(currentRoom)) {
+              console.error('[Signaling] OFFER rejected due to invalid state', {
+                isTeacher,
+                currentRoom,
+                roomExists: currentRoom ? rooms.has(currentRoom) : false,
+              });
+              break;
+            }
             const room = rooms.get(currentRoom);
             room.lastActivity = Date.now();
 
             if (!payload?.targetPeerId) {
-              ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing targetPeerId for OFFER' }));
+              sendError(ws, 'Missing targetPeerId for OFFER', { roomCode: currentRoom });
               break;
             }
             const target = room.students.get(payload.targetPeerId);
@@ -259,7 +284,14 @@ export async function createServer() {
           }
 
           case 'ANSWER': {
-            if (isTeacher || !currentRoom || !rooms.has(currentRoom)) break;
+            if (isTeacher || !currentRoom || !rooms.has(currentRoom)) {
+              console.error('[Signaling] ANSWER rejected due to invalid state', {
+                isTeacher,
+                currentRoom,
+                roomExists: currentRoom ? rooms.has(currentRoom) : false,
+              });
+              break;
+            }
             const room = rooms.get(currentRoom);
             room.lastActivity = Date.now();
             if (room.teacher.readyState === WebSocket.OPEN) {
@@ -269,12 +301,22 @@ export async function createServer() {
           }
 
           case 'ICE_CANDIDATE': {
-            if (!currentRoom || !rooms.has(currentRoom)) break;
+            if (!currentRoom || !rooms.has(currentRoom)) {
+              console.error('[Signaling] ICE_CANDIDATE rejected because room is missing', {
+                currentRoom,
+                roomExists: currentRoom ? rooms.has(currentRoom) : false,
+                isTeacher,
+              });
+              break;
+            }
             const room = rooms.get(currentRoom);
             room.lastActivity = Date.now();
 
             if (isTeacher) {
-              if (!payload?.targetPeerId) break;
+              if (!payload?.targetPeerId) {
+                sendError(ws, 'Missing targetPeerId for ICE_CANDIDATE', { roomCode: currentRoom });
+                break;
+              }
               const target = room.students.get(payload.targetPeerId);
               if (target && target.readyState === WebSocket.OPEN) {
                 target.send(JSON.stringify({ type: 'ICE_CANDIDATE', payload: payload.candidate, peerId: payload.targetPeerId }));
@@ -288,12 +330,12 @@ export async function createServer() {
           }
 
           default:
-            console.log(`[Signaling] Unknown type: ${type}`);
+            console.error(`[Signaling] Unknown type: ${type}`);
         }
 
       } catch (err) {
         if (err instanceof z.ZodError) {
-          console.warn('[Signaling] Invalid payload dropped');
+          console.error('[Signaling] Invalid payload dropped', err.issues);
         } else {
           console.error('[Signaling] Error:', err);
         }
@@ -307,7 +349,7 @@ export async function createServer() {
       if (isTeacher) {
         room.students.forEach((studentWs) => {
           if (studentWs.readyState === WebSocket.OPEN) {
-            studentWs.send(JSON.stringify({ type: 'ERROR', message: 'Your session has ended - the teacher disconnected.' }));
+            sendError(studentWs, 'Your session has ended - the teacher disconnected.', { roomCode: currentRoom, role: 'student' });
           }
         });
         for (const [sid, g] of graceSessions) {
@@ -333,7 +375,9 @@ export async function createServer() {
         for (const [sid, g] of graceSessions) {
           if (g.roomCode === currentRoom && g.peerId === peerId) {
             if (g.timer) clearTimeout(g.timer);
-            g.timer = setTimeout(() => {
+            // 30s window -- if student reconnects in time we cancel this and restore them
+        // handles the "wifi dropped for 5 seconds" classroom scenario
+        g.timer = setTimeout(() => {
               graceSessions.delete(sid);
               console.log(`[Grace] Session expired for peer ${peerId}`);
             }, 30_000);
